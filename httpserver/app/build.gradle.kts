@@ -45,7 +45,7 @@ java {
 }
 
 application {
-    mainClass.set("com.fileviewplus.httpserver.HttpFileServerKt")
+    mainClass.set("com.arapps.fileviewplus.httpserver.HttpFileServerKt")
 }
 
 

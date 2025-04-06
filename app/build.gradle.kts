@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.fileviewplus"
+    namespace = "com.arapps.fileviewplus"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.fileviewplus"
+        applicationId = "com.arapps.fileviewplus"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -74,7 +74,9 @@ dependencies {
     implementation(libs.ktor.serialization.jackson)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.status.pages)
-
+    implementation(libs.androidx.appcompat)
+    implementation(libs.lottie)
+    implementation(libs.lottie.compose)
 
     // Unit Testing
     testImplementation(libs.junit)
