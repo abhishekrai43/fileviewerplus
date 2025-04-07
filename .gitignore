@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+/app/release/*.jks
+/app/release/*.aab
