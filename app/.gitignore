@@ -1,1 +1,10 @@
-/build
+# Ignore keystore
+/keystore.jks
+
+# Build outputs
+/build/
+/app/build/
+/**/build/
+
+# Local config files
+local.properties

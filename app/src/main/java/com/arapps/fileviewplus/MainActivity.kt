@@ -462,6 +462,21 @@ class MainActivity : ComponentActivity() {
     ) {
         var expanded by remember { mutableStateOf(false) }
         val context = LocalContext.current
+        var zipping by remember { mutableStateOf(false) }
+
+        if (zipping) {
+            AlertDialog(
+                onDismissRequest = {},
+                confirmButton = {},
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Zipping folder...")
+                    }
+                }
+            )
+        }
 
         Box(modifier = modifier) {
             IconButton(onClick = { expanded = true }) {
@@ -473,25 +488,23 @@ class MainActivity : ComponentActivity() {
                     text = { Text("Zip & Share") },
                     onClick = {
                         expanded = false
+                        zipping = true
                         CoroutineScope(Dispatchers.IO).launch {
-                            val zipFile = ZipUtils.createZip(context, folderName, files)
-                            ZipUtils.shareZip(context, zipFile)
+                            try {
+                                val zipFile = ZipUtils.createZip(context, folderName, files)
+                                ZipUtils.shareZip(context, zipFile)
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Zipping failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            } finally {
+                                withContext(Dispatchers.Main) {
+                                    zipping = false
+                                }
+                            }
                         }
                     }
-                )
-                DropdownMenuItem(
-                    text = { Text("Properties") },
-                    onClick = {
-                        expanded = false
-                        val totalSize = files.sumOf { it.length() }
-                        val fileCount = files.size
-                        val readableSize =
-                            android.text.format.Formatter.formatShortFileSize(context, totalSize)
 
-                        CoroutineScope(Dispatchers.Main).launch {
-                            showPropertiesDialog(context, folderName, fileCount, readableSize)
-                        }
-                    }
                 )
             }
         }
