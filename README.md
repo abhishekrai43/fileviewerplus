@@ -6,4 +6,4 @@
 • Smart Cleanup Suggestions  
 • PIN-Protected Vault  
 • 1-Click Vault Backup to Google Drive  
-• Restore Vault from Drive on New Device
+• Restore Vault from Drive on New Device (In Case of Device Lost/Stolen)
