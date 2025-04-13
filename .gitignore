@@ -15,3 +15,11 @@
 local.properties
 /app/release/*.jks
 /app/release/*.aab
+# Gradle
+.gradle/
+build/
+**/build/
+
+.idea/
+*.apk
+*.aab

@@ -1,14 +1,11 @@
 package com.arapps.fileviewplus.utils
 
-import android.Manifest
 import android.app.*
 import android.content.Context
-import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
-import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import com.arapps.fileviewplus.R
 
 object NotificationUtils {
@@ -29,35 +26,39 @@ object NotificationUtils {
         }
     }
 
-    fun showServerRunningNotification(context: Context, ipAddress: String) {
-        // Request notification permission if needed
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                if (context is Activity) {
-                    ActivityCompat.requestPermissions(
-                        context,
-                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                        1001
-                    )
-                } else {
-                    Log.w("NotificationUtils", "Context is not an Activity. Cannot request notification permission.")
-                    return
-                }
-            }
+    fun showServerRunningNotification(context: Context, ipAddress: String, port: Int) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val scheme = if (port == 2121) "ftp" else "http"
+        val url = "$scheme://$ipAddress:$port"
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse(url)
         }
 
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            flags
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_server) // Your custom icon
+            .setSmallIcon(R.drawable.ic_notification_server) // your icon in res/drawable
             .setContentTitle("📡 Local File Sharing")
-            .setContentText("Access at http://$ipAddress:8080")
+            .setContentText("Access at $url")
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
 
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, notification)
     }
 

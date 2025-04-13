@@ -1,53 +1,70 @@
-package com.arapps.fileviewplus
+package com.arapps.fileviewplus.ui
 
+import NavigationState
+import ScanningOverlay
+import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
-import com.arapps.fileviewplus.ui.components.*
+import com.arapps.fileviewplus.logic.FileScanner
+import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileviewplus.ui.components.FileViewTopAppBar
+import com.arapps.fileviewplus.ui.screens.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
-
+@SuppressLint("RememberReturnType")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileViewApp() {
+fun FileViewApp(isDarkMode: Boolean, onToggleTheme: (Boolean) -> Unit) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var hasPermission by remember { mutableStateOf(checkStoragePermission()) }
     var fileStructure by remember { mutableStateOf<List<FileNode.Category>>(emptyList()) }
-    val nav = remember { mutableStateOf(NavigationState()) }
     var isLoading by remember { mutableStateOf(false) }
+    val nav = remember { mutableStateOf(NavigationState()) }
 
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            isLoading = true
-            withContext(Dispatchers.IO) {
-                val result = FileScanner.scanStorage(Environment.getExternalStorageDirectory())
-                withContext(Dispatchers.Main) {
-                    fileStructure = result
-                    isLoading = false
-                }
+    fun refreshFiles() {
+        isLoading = true
+        coroutineScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                FileScanner.scanStorage(Environment.getExternalStorageDirectory())
             }
+            fileStructure = result
+            isLoading = false
         }
     }
 
+    LaunchedEffect(hasPermission) {
+        if (hasPermission) refreshFiles()
+    }
+
+    BackHandler(enabled = nav.value.isInSubScreen()) {
+        nav.value = nav.value.goBack()
+    }
+    BackHandler(enabled = nav.value.showFileTypeExplorer || nav.value.showVault || nav.value.vaultFolder != null) {
+        nav.value = NavigationState()
+    }
+
+
     if (!hasPermission) {
-        RequestPermissionScreen {
-            openPermissionSettings(context)
-        }
+        RequestPermissionScreen { openPermissionSettings(context) }
         return
     }
 
@@ -56,63 +73,52 @@ fun FileViewApp() {
         return
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            NavigationDrawerContent(
-                onSafClick = {
-                    nav.value = nav.value.copy(saf = true)
-                    scope.launch { drawerState.close() }
-                },
-                onShareClick = {
-                    shareApp(context)
-                    scope.launch { drawerState.close() }
-                },
-                onServerClick = {
-                    nav.value = nav.value.copy(startServer = true)
-                    scope.launch { drawerState.close() }
-                }
-            )
-        },
-        modifier = Modifier.fillMaxHeight().width(280.dp)
-    ) {
-        Scaffold(
-            topBar = {
-                FileViewTopAppBar(onDrawerClick = { scope.launch { drawerState.open() } })
-            }
-        ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-                when {
-                    nav.value.day != null -> FileListScreen(nav.value.day!!) { nav.value = nav.value.goBack() }
-                    nav.value.month != null -> DayListScreen(nav.value.month!!, onSelect = {
-                        nav.value = nav.value.copy(day = it)
-                    }, onBack = {
-                        nav.value = nav.value.copy(month = null)
-                    })
-                    nav.value.category != null -> MonthListScreen(nav.value.category!!, onSelect = {
-                        nav.value = nav.value.copy(month = it)
-                    }, onBack = {
-                        nav.value = nav.value.copy(category = null)
-                    })
-                    nav.value.saf -> SafExplorerScreen(
-                        safRoot = SafStorage.getUri(context) ?: run {
-                            Toast.makeText(context, "SAF folder not selected", Toast.LENGTH_SHORT).show()
-                            nav.value = nav.value.copy(saf = false)
-                            return@Box
-                        },
-                        onExit = { nav.value = nav.value.copy(saf = false) }
-                    )
-                    nav.value.startServer -> ServerControlPanel().also {
-                        nav.value = nav.value.copy(startServer = false)
-                    }
-                    else -> CategoryListScreen(
-                        categories = fileStructure,
-                        onSelect = { category -> nav.value = nav.value.copy(category = category) },
-                        onOpenDrawer = { scope.launch { drawerState.open() } }
-                    )
-                }
-            }
+    when {
+        nav.value.day != null -> FileListScreen(nav.value.day!!) {
+            nav.value = nav.value.goBack()
         }
+
+        nav.value.month != null -> DayListScreen(
+            nav.value.month!!,
+            onSelect = { nav.value = nav.value.copy(day = it) },
+            onBack = { nav.value = nav.value.copy(month = null) }
+        )
+
+        nav.value.year != null -> MonthListScreen(
+            nav.value.year!!,
+            onSelect = { nav.value = nav.value.copy(month = it) },
+            onBack = { nav.value = nav.value.copy(year = null) }
+        )
+
+        nav.value.category != null -> YearListScreen(
+            nav.value.category!!,
+            onYearSelected = { nav.value = nav.value.copy(year = it) }
+        )
+
+        nav.value.showFileTypeExplorer -> FileTypeExplorerScreen(categories = fileStructure)
+
+        nav.value.vaultFolder != null -> VaultFolderScreen(
+            folder = nav.value.vaultFolder!!,
+            onBack = { nav.value = nav.value.copy(vaultFolder = null) }
+        )
+
+        nav.value.showVault -> VaultScreen(
+            onBack = { nav.value = NavigationState() },
+            onOpenFolder = { nav.value = nav.value.copy(vaultFolder = it) }
+        )
+
+        else -> CategoryListScreen(
+            categories = fileStructure,
+            onSelect = { nav.value = nav.value.copy(category = it) },
+            onSearch = { nav.value = nav.value.copy(showFileTypeExplorer = true) },
+            onToggleView = {
+                Toast.makeText(context, "Toggle view not implemented", Toast.LENGTH_SHORT).show()
+            },
+            onGoHome = { nav.value = NavigationState() },
+            isDarkMode = isDarkMode,
+            onToggleTheme = onToggleTheme,
+            onVaultClick = { nav.value = nav.value.copy(showVault = true) }
+        )
     }
 }
 
@@ -135,4 +141,28 @@ fun openPermissionSettings(context: Context) {
     } else {
         Toast.makeText(context, "Permission needed only on Android 11+", Toast.LENGTH_SHORT).show()
     }
+}
+
+@Composable
+fun RequestPermissionScreen(onGrantClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "To organize your files, FileFlow Plus needs full storage access.",
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = onGrantClick) {
+            Text("Grant Permission")
+        }
+    }
+}
+
+private fun NavigationState.isInSubScreen(): Boolean {
+    return day != null || month != null || category != null
 }

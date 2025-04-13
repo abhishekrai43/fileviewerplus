@@ -1,4 +1,7 @@
-package com.arapps.fileviewplus.utils
+import java.io.File
 
-class SafUtils {
+object SafUtils {
+    fun isSafProtected(file: File): Boolean {
+        return !file.canRead() || !file.canWrite()
+    }
 }

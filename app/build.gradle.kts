@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+
 }
 
 android {
@@ -14,11 +15,13 @@ android {
         applicationId = "com.arapps.fileviewplus"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
-
+        versionCode = 8
+        versionName = "1.0.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    flavorDimensions += "version"
+
 
     buildTypes {
         release {
@@ -50,6 +53,7 @@ android {
         resources {
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/DEPENDENCIES"
         }
     }
 }
@@ -58,6 +62,10 @@ dependencies {
     // Core & lifecycle
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.review.ktx)
+    implementation(libs.firebase.coroutines)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.google.billing)
 
     // Jetpack Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -77,6 +85,9 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.lottie)
     implementation(libs.lottie.compose)
+    implementation(libs.apache.ftpserver)
+    implementation(project(":ftpserver"))
+
 
     // Unit Testing
     testImplementation(libs.junit)

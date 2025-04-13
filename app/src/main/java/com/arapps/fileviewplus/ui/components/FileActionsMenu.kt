@@ -3,6 +3,9 @@ package com.arapps.fileviewplus.ui.components
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -10,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
 import com.arapps.fileviewplus.utils.ZipUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,15 +22,37 @@ import java.io.File
 
 @Composable
 fun FileActionsMenu(
-    file: File,
+    file: File?,
     modifier: Modifier = Modifier
 ) {
+    if (file == null) return
+
     var expanded by remember { mutableStateOf(false) }
+    var requestFileAccess by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val doc = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, it)
+            if (doc?.delete() == true) {
+                Toast.makeText(context, "File deleted successfully", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Delete failed or file not accessible", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    LaunchedEffect(requestFileAccess) {
+        if (requestFileAccess) {
+            filePickerLauncher.launch(arrayOf("*/*"))
+            requestFileAccess = false
+        }
+    }
 
     Box(modifier = modifier) {
         IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+            Icon(Icons.Default.MoreVert, contentDescription = "File options")
         }
 
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -51,13 +77,16 @@ fun FileActionsMenu(
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             val zipFile = ZipUtils.createZip(context, file.nameWithoutExtension, listOf(file))
-                            ZipUtils.shareZip(context, zipFile)
+                            if (zipFile != null) {
+                                ZipUtils.shareZip(context, zipFile)
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
                 }
             )
+
         }
     }
 }
@@ -82,9 +111,5 @@ private fun shareFile(context: Context, file: File) {
 }
 
 private fun getUriForFile(context: Context, file: File): Uri {
-    return androidx.core.content.FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.provider",
-        file
-    )
+    return FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
 }

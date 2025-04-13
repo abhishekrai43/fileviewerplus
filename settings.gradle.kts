@@ -20,7 +20,9 @@ dependencyResolutionManagement {
     }
 
     rootProject.name = "fileviewplus"
-    include(":app")
-    includeBuild("httpserver")
+    include(":app", ":ftpserver", ":httpserver")
+
+
+
 
 }

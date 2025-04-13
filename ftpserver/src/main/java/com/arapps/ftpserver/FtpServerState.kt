@@ -1,4 +1,8 @@
 package com.arapps.ftpserver
 
-class FtpServerState {
+enum class FtpServerState {
+    STOPPED,
+    STARTING,
+    RUNNING,
+    ERROR
 }

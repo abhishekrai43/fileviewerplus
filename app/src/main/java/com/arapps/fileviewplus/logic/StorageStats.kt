@@ -12,7 +12,11 @@ object StorageStats {
 
     fun calculateStats(categories: List<FileNode.Category>): List<Stat> {
         return categories.map { category ->
-            val allFiles = category.months.flatMap { it.days }.flatMap { it.files }
+            val allFiles = category.years
+                .flatMap { it.months }
+                .flatMap { it.days }
+                .flatMap { it.files }
+
             Stat(category.name, allFiles.sumOf { it.length() })
         }
     }
