@@ -1,10 +1,9 @@
-A SAF compliant File Manager for Android\n
-100% Offline (Uses no Internet)\n
-Your Files stay with You\n
-Sorts files by Year, Month, Day (If you have a lot of files, helps)\n
-Want to browse, Manage? (In Built HTTP and FTP)\n
-Smart Suggestions about unused or Large files\n
-Private PIN protected Vault\n
-You can backup Vault Files with 1 click to your Google Drive\n
-Retrieve files from Good Drive in case of Device Loss
-
+• SAF-compliant File Manager  
+• 100% Offline (No Internet access)  
+• Your Files Stay With You  
+• Smart Sort: Year → Month → Day  
+• Built-in HTTP & FTP Browsing  
+• Smart Cleanup Suggestions  
+• PIN-Protected Vault  
+• 1-Click Vault Backup to Google Drive  
+• Restore Vault from Drive on New Device
