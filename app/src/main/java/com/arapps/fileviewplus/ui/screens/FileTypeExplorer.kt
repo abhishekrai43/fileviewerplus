@@ -154,7 +154,7 @@ fun FileTypeExplorerScreen(
                                     } else {
                                         val uri = FileProvider.getUriForFile(
                                             context,
-                                            context.packageName + ".provider",
+                                            context.packageName + ".Fileprovider",
                                             File(file.path)
                                         )
                                         val intent = Intent(Intent.ACTION_VIEW).apply {

@@ -15,8 +15,8 @@ android {
         applicationId = "com.arapps.fileviewplus"
         minSdk = 24
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

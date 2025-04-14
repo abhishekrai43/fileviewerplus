@@ -61,7 +61,7 @@ object ZipUtils {
 
         val uri: Uri = FileProvider.getUriForFile(
             context,
-            "${context.packageName}.provider",
+            "${context.packageName}.fileprovider",
             zipFile
         )
 
@@ -75,6 +75,7 @@ object ZipUtils {
             Intent.createChooser(intent, "Share Zipped File")
         )
     }
+
     fun zipDocumentFileAndShare(context: Context, file: DocumentFile) {
         try {
             val tempFile = File.createTempFile("doc_", file.name ?: "file", context.cacheDir)

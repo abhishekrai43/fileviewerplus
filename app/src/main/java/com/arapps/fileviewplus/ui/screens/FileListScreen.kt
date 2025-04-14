@@ -69,10 +69,10 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
 fun openFile(file: File, context: Context) {
     val uri: Uri = FileProvider.getUriForFile(
         context,
-        "${context.packageName}.provider",
+        "${context.packageName}.fileprovider",
         file
     )
-    val mimeType = context.contentResolver.getType(uri)
+    val mimeType = context.contentResolver.getType(uri) ?: "*/*"
 
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, mimeType)

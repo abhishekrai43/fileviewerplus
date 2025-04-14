@@ -20,17 +20,30 @@ import com.arapps.fileviewplus.ui.theme.FileFlowPlusTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private var permissionPreviouslyDenied = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ⚠️ CHECK AND LAUNCH SETTINGS IF STORAGE ACCESS IS NOT GRANTED
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+        permissionPreviouslyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             !Environment.isExternalStorageManager()
-        ) {
-            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-            intent.data = Uri.parse("package:$packageName")
-            startActivity(intent)
-            // DO NOT return or block setContent — let user come back and app will resume normally
+        } else {
+            false
+        }
+
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && permissionPreviouslyDenied) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -54,6 +67,18 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // 🔁 Recreate the activity once if user just granted permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            permissionPreviouslyDenied &&
+            Environment.isExternalStorageManager()
+        ) {
+            recreate()
         }
     }
 }

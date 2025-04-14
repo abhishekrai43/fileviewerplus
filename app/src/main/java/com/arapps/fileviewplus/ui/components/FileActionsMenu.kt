@@ -92,7 +92,11 @@ fun FileActionsMenu(
 }
 
 private fun openFile(context: Context, file: File) {
-    val uri = getUriForFile(context, file)
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file
+    )
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -101,7 +105,11 @@ private fun openFile(context: Context, file: File) {
 }
 
 private fun shareFile(context: Context, file: File) {
-    val uri = getUriForFile(context, file)
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file
+    )
     val intent = Intent(Intent.ACTION_SEND).apply {
         putExtra(Intent.EXTRA_STREAM, uri)
         type = context.contentResolver.getType(uri) ?: "*/*"
@@ -110,6 +118,3 @@ private fun shareFile(context: Context, file: File) {
     context.startActivity(Intent.createChooser(intent, "Share via"))
 }
 
-private fun getUriForFile(context: Context, file: File): Uri {
-    return FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-}
