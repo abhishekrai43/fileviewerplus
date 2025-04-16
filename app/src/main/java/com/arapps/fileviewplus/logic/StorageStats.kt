@@ -1,6 +1,8 @@
 package com.arapps.fileviewplus.logic
 
 import com.arapps.fileviewplus.model.FileNode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.DecimalFormat
 
 object StorageStats {
@@ -10,16 +12,19 @@ object StorageStats {
         val totalBytes: Long
     )
 
-    fun calculateStats(categories: List<FileNode.Category>): List<Stat> {
-        return categories.map { category ->
-            val allFiles = category.years
-                .flatMap { it.months }
-                .flatMap { it.days }
-                .flatMap { it.files }
+    suspend fun calculateStats(categories: List<FileNode.Category>): List<Stat> =
+        withContext(Dispatchers.IO) {
+            categories.map { category ->
+                val allFiles = category.years
+                    .flatMap { it.months }
+                    .flatMap { it.days }
+                    .flatMap { it.files }
 
-            Stat(category.name, allFiles.sumOf { it.length() })
+                val totalBytes = allFiles.sumOf { it.length() }
+                Stat(category.name, totalBytes)
+            }
         }
-    }
+
 
     fun formatSize(bytes: Long): String {
         val kb = 1024

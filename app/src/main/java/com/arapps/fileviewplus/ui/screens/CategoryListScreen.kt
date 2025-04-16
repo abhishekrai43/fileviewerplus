@@ -48,7 +48,12 @@ fun CategoryListScreen(
     val ipAddress = remember { mutableStateOf("") }
     val protocol = remember { mutableStateOf("FTP") }
 
-    val stats = remember(categories) { StorageStats.calculateStats(categories) }
+    val stats = remember { mutableStateOf<List<StorageStats.Stat>>(emptyList()) }
+
+    LaunchedEffect(categories) {
+        stats.value = StorageStats.calculateStats(categories)
+    }
+
 
     val allFiles = remember(categories) {
         categories.flatMap { cat ->
@@ -181,7 +186,8 @@ fun CategoryListScreen(
         ) {
 
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                StorageUsageBar(stats = stats)
+                StorageUsageBar(stats = stats.value)
+
 
                 if (suggestions.isNotEmpty()) {
                     val (text, action) = suggestions[suggestionIndex]
