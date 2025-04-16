@@ -23,14 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.documentfile.provider.DocumentFile
 import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileviewplus.ui.screens.FileCategory
 import java.io.File
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.FilterChip
-import com.arapps.fileviewplus.ui.screens.FileCategory
-
-
-
 
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -68,11 +66,12 @@ fun FileTypeExplorerScreen(
     }.groupBy { getFileCategory(it.name) }
 
     Scaffold { padding ->
-        Column(modifier = Modifier
-            .fillMaxSize()
-            .padding(padding)
-            .padding(horizontal = 16.dp, vertical = 12.dp)) {
-
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -115,7 +114,8 @@ fun FileTypeExplorerScreen(
                     }
 
                     items(files) { file ->
-                        val isProtected = !File(file.path).canRead()
+                        val realFile = File(file.path)
+                        val isProtected = !realFile.canRead()
 
                         ListItem(
                             headlineContent = {
@@ -150,12 +150,12 @@ fun FileTypeExplorerScreen(
                                 .fillMaxWidth()
                                 .clickable {
                                     if (isProtected) {
-                                        launcher.launch(Uri.fromFile(File(file.parent)))
+                                        launcher.launch(Uri.fromFile(realFile.parentFile))
                                     } else {
                                         val uri = FileProvider.getUriForFile(
                                             context,
-                                            context.packageName + ".Fileprovider",
-                                            File(file.path)
+                                            context.packageName + ".fileprovider",
+                                            realFile
                                         )
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
                                             setDataAndType(uri, getMimeType(file.name))
@@ -169,10 +169,9 @@ fun FileTypeExplorerScreen(
                 }
             }
         }
-
     }
-
 }
+
 private fun getFileCategory(name: String): FileCategory {
     val lower = name.lowercase()
     return when {
@@ -183,8 +182,9 @@ private fun getFileCategory(name: String): FileCategory {
         else -> FileCategory.OTHER
     }
 }
+
 private fun getMimeType(fileName: String): String {
     val extension = fileName.substringAfterLast('.', "")
-    return android.webkit.MimeTypeMap.getSingleton()
+    return MimeTypeMap.getSingleton()
         .getMimeTypeFromExtension(extension) ?: "application/octet-stream"
 }

@@ -70,7 +70,7 @@ fun MonthListScreen(
 
                         val allFiles = month.days.flatMap { it.files }
                         val fileCount = allFiles.size
-                        val sizeText = StorageStats.formatSize(allFiles.sumOf { it.length() })
+                        val sizeText = StorageStats.formatSize(allFiles.sumOf { it.size })
 
                         Text(
                             text = "$fileCount files",

@@ -17,13 +17,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.arapps.fileviewplus.model.FileNode
 import java.io.File
 
 @Composable
-fun FilePreview(file: File) {
+fun FilePreview(file: FileNode) {
     val context = LocalContext.current
-    val uri = Uri.fromFile(file)
-    val extension = file.extension.lowercase()
+    val realFile = File(file.path)
+    val uri = Uri.fromFile(realFile)
+    val extension = file.name.substringAfterLast('.', "").lowercase()
     val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
 
     when {

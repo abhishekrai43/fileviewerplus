@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
 import java.io.File
 
@@ -34,8 +35,8 @@ enum class FileSuggestionCategory(val label: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilteredFileListScreen(
-    oldFiles: List<File>,
-    largeFiles: List<File>,
+    files: List<FileNode>,
+    title: String,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -58,6 +59,13 @@ fun FilteredFileListScreen(
     }
 
     BackHandler { onBack() }
+
+    val oldFiles = files.filter {
+        System.currentTimeMillis() - it.lastModified > 6 * 30 * 24 * 60 * 60 * 1000L
+    }
+    val largeFiles = files.filter {
+        it.size > 200 * 1024 * 1024
+    }
 
     val currentFiles = when (selectedTab) {
         FileSuggestionCategory.OLD -> oldFiles
@@ -101,7 +109,7 @@ fun FilteredFileListScreen(
                 )
             }
 
-            Divider()
+            HorizontalDivider()
 
             if (currentFiles.isEmpty()) {
                 Box(
@@ -117,12 +125,14 @@ fun FilteredFileListScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(items = currentFiles) { file ->
-                        val isProtected = !file.canRead()
+                        val isProtected = SafUtils.isSafProtected(File(file.path))
 
                         if (isProtected) {
                             GrantFullAccessCard(
-                                folderPath = file.parent ?: "Unknown Folder",
-                                onGrantClick = { requestAccessFor = file.parentFile }
+                                folderPath = File(file.path).parent ?: "Unknown Folder",
+                                onGrantClick = {
+                                    requestAccessFor = File(file.path).parentFile
+                                }
                             )
                         }
 
@@ -130,7 +140,7 @@ fun FilteredFileListScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = !isProtected) {
-                                    openFileSafely(file, context)
+                                    openFileSafely(File(file.path), context)
                                 },
                             colors = CardDefaults.elevatedCardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -145,7 +155,7 @@ fun FilteredFileListScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    "${file.length() / 1024} KB",
+                                    "${file.size / 1024} KB",
                                     style = MaterialTheme.typography.labelMedium
                                 )
                             }
@@ -173,23 +183,3 @@ private fun SuggestionChip(
     )
 }
 
-fun openFileSafely(file: File, context: Context) {
-    try {
-        val uri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        context.startActivity(Intent.createChooser(intent, "Open with"))
-    } catch (e: ActivityNotFoundException) {
-        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Unable to open file", Toast.LENGTH_SHORT).show()
-    }
-}

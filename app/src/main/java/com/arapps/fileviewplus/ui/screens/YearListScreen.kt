@@ -39,7 +39,7 @@ fun YearListScreen(
             items(category.years.sortedByDescending { it.name.toIntOrNull() ?: 0 }) { year ->
                 val allFiles = year.months.flatMap { it.days }.flatMap { it.files }
                 val fileCount = allFiles.size
-                val totalSize = StorageStats.formatSize(allFiles.sumOf { it.length() })
+                val totalSize = StorageStats.formatSize(allFiles.sumOf { it.size })
 
                 Card(
                     modifier = Modifier

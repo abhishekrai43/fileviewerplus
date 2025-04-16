@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
+import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.ZipUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,31 +23,21 @@ import java.io.File
 
 @Composable
 fun FileActionsMenu(
-    file: File?,
+    file: FileNode?,
     modifier: Modifier = Modifier
 ) {
     if (file == null) return
 
     var expanded by remember { mutableStateOf(false) }
-    var requestFileAccess by remember { mutableStateOf(false) }
-
     val context = LocalContext.current
 
+    val realFile = remember(file.path) { File(file.path) }
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             val doc = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, it)
-            if (doc?.delete() == true) {
-                Toast.makeText(context, "File deleted successfully", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Delete failed or file not accessible", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    LaunchedEffect(requestFileAccess) {
-        if (requestFileAccess) {
-            filePickerLauncher.launch(arrayOf("*/*"))
-            requestFileAccess = false
+            val deleted = doc?.delete() ?: false
+            val msg = if (deleted) "File deleted successfully" else "Delete failed or file not accessible"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -60,14 +51,14 @@ fun FileActionsMenu(
                 text = { Text("Open") },
                 onClick = {
                     expanded = false
-                    openFile(context, file)
+                    openFile(context, realFile)
                 }
             )
             DropdownMenuItem(
                 text = { Text("Share") },
                 onClick = {
                     expanded = false
-                    shareFile(context, file)
+                    shareFile(context, realFile)
                 }
             )
             DropdownMenuItem(
@@ -76,45 +67,52 @@ fun FileActionsMenu(
                     expanded = false
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            val zipFile = ZipUtils.createZip(context, file.nameWithoutExtension, listOf(file))
-                            if (zipFile != null) {
-                                ZipUtils.shareZip(context, zipFile)
-                            }
+                            val zipFile = ZipUtils.createZip(context, file.name.substringBeforeLast('.'), listOf(realFile))
+                            zipFile?.let {
+                                ZipUtils.shareZip(context, it)
+                            } ?: Toast.makeText(context, "Failed to create ZIP", Toast.LENGTH_SHORT).show()
                         } catch (e: Exception) {
                             e.printStackTrace()
+                            Toast.makeText(context, "Zipping failed", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
             )
-
         }
     }
 }
 
 private fun openFile(context: Context, file: File) {
-    val uri = FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file
-    )
-    val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        val uri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open with"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Unable to open file", Toast.LENGTH_SHORT).show()
     }
-    context.startActivity(Intent.createChooser(intent, "Open with"))
 }
 
 private fun shareFile(context: Context, file: File) {
-    val uri = FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file
-    )
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        putExtra(Intent.EXTRA_STREAM, uri)
-        type = context.contentResolver.getType(uri) ?: "*/*"
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        val uri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_STREAM, uri)
+            type = context.contentResolver.getType(uri) ?: "*/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share via"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Unable to share file", Toast.LENGTH_SHORT).show()
     }
-    context.startActivity(Intent.createChooser(intent, "Share via"))
 }
-

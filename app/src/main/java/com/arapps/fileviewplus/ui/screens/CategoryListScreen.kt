@@ -64,41 +64,44 @@ fun CategoryListScreen(
     }
 
     var insights by remember { mutableStateOf<List<FileAnalytics.FileInsight>>(emptyList()) }
+
     LaunchedEffect(allFiles) {
         withContext(Dispatchers.IO) {
             insights = allFiles.map {
                 FileAnalytics.FileInsight(
                     file = it,
-                    size = it.length(),
-                    lastModified = it.lastModified()
+                    size = it.size, // ✅ precomputed
+                    lastModified = File(it.path).lastModified()
                 )
             }
         }
     }
 
+
     val oldFiles = remember(insights) { FileAnalytics.getOldFiles(insights, 180) }
     val largeFiles = remember(insights) { FileAnalytics.getLargeFiles(insights, 200) }
 
     var showFilteredList by remember { mutableStateOf(false) }
-    var filteredFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var filteredFiles by remember { mutableStateOf<List<FileNode>>(emptyList()) }
     var filteredTitle by remember { mutableStateOf("Filtered Files") }
 
     val suggestions = listOfNotNull(
-        oldFiles.takeIf { it.isNotEmpty() }?.let {
-            "\uD83D\uDCC5 ${it.size} file${if (it.size > 1) "s" else ""} not opened in 6 months" to {
+        oldFiles.takeIf { it.isNotEmpty() }?.let { old ->
+            "📅 ${old.size} file${if (old.size > 1) "s" else ""} not opened in 6 months" to {
                 filteredTitle = "Old Files"
-                filteredFiles = oldFiles.map { it.file }
+                filteredFiles = old.map { it.file } // ✅ FileNode
                 showFilteredList = true
             }
         },
-        largeFiles.takeIf { it.isNotEmpty() }?.let {
-            "\uD83D\uDC00 ${it.size} large file${if (it.size > 1) "s" else ""} (>200MB)" to {
+        largeFiles.takeIf { it.isNotEmpty() }?.let { large ->
+            "🐀 ${large.size} large file${if (large.size > 1) "s" else ""} (>200MB)" to {
                 filteredTitle = "Large Files"
-                filteredFiles = largeFiles.map { it.file }
+                filteredFiles = large.map { it.file } // ✅ FileNode
                 showFilteredList = true
             }
         }
     )
+
 
     var suggestionIndex by remember { mutableStateOf(0) }
 
@@ -113,12 +116,13 @@ fun CategoryListScreen(
 
     if (showFilteredList) {
         FilteredFileListScreen(
-            oldFiles = oldFiles.map { it.file },
-            largeFiles = largeFiles.map { it.file },
+            files = filteredFiles,
+            title = filteredTitle,
             onBack = { showFilteredList = false }
         )
         return
     }
+
 
     Scaffold(
         topBar = {

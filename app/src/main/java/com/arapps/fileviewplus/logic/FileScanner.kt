@@ -1,6 +1,5 @@
 package com.arapps.fileviewplus.logic
 
-
 import com.arapps.fileviewplus.model.FileNode
 import java.io.File
 import java.text.SimpleDateFormat
@@ -12,15 +11,12 @@ object FileScanner {
     private val videoExt = listOf("mp4", "mkv", "avi", "3gp")
     private val docExt = listOf("pdf", "doc", "docx", "txt", "xls", "ppt")
 
-    private val monthFormat = SimpleDateFormat("MMM-yyyy", Locale.getDefault())
+    private val monthFormat = SimpleDateFormat("MMM", Locale.getDefault()) // Jan, Feb
+    private val yearFormat = SimpleDateFormat("yyyy", Locale.getDefault())
     private val dayFormat = SimpleDateFormat("dd-MMM-yyyy", Locale.getDefault())
 
     fun scanStorage(rootDir: File): List<FileNode.Category> {
-        val categorized = mutableMapOf<String, MutableMap<String, MutableMap<String, MutableMap<String, MutableList<File>>>>>()
-
-        val dayFormat = SimpleDateFormat("dd-MMM-yyyy", Locale.getDefault())
-        val monthFormat = SimpleDateFormat("MMM", Locale.getDefault()) // Just "Jan", "Feb"
-        val yearFormat = SimpleDateFormat("yyyy", Locale.getDefault())
+        val categorized = mutableMapOf<String, MutableMap<String, MutableMap<String, MutableMap<String, MutableList<FileNode>>>>>()
 
         rootDir.walkTopDown().forEach { file ->
             if (!file.isFile) return@forEach
@@ -38,12 +34,25 @@ object FileScanner {
             val month = monthFormat.format(lastMod)
             val day = dayFormat.format(lastMod)
 
+            val fileNode = FileNode(
+                name = file.name,
+                path = file.absolutePath,
+                type = when (category) {
+                    "IMG" -> FileNode.FileType.IMAGE
+                    "VID" -> FileNode.FileType.VIDEO
+                    else -> FileNode.FileType.DOCUMENT
+                },
+                size = file.length(),
+                lastModified = file.lastModified()
+            )
+
+
             val yearMap = categorized.getOrPut(category) { mutableMapOf() }
             val monthMap = yearMap.getOrPut(year) { mutableMapOf() }
             val dayMap = monthMap.getOrPut(month) { mutableMapOf() }
             val fileList = dayMap.getOrPut(day) { mutableListOf() }
 
-            fileList.add(file)
+            fileList.add(fileNode)
         }
 
         return categorized.map { (categoryName, yearMap) ->
@@ -56,15 +65,19 @@ object FileScanner {
                             FileNode.Month(
                                 name = monthName,
                                 days = dayMap.map { (dayName, files) ->
-                                    FileNode.Day(name = dayName, files = files)
+                                    FileNode.Day(
+                                        name = dayName,
+                                        files = files.sortedByDescending { it.name }
+                                    )
                                 }.sortedByDescending { it.name }
                             )
                         }.sortedByDescending { monthNameToNumber(it.name) }
                     )
                 }.sortedByDescending { it.name.toIntOrNull() ?: 0 }
             )
-        }.sortedBy { it.name } // DOC, IMG, VID
+        }.sortedBy { it.name } // Keep: DOC, IMG, VID order
     }
+
     private fun monthNameToNumber(month: String): Int {
         return try {
             SimpleDateFormat("MMM", Locale.getDefault()).parse(month)?.let {
@@ -74,5 +87,4 @@ object FileScanner {
             -1
         }
     }
-
 }

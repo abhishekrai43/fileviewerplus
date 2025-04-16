@@ -1,24 +1,21 @@
 package com.arapps.fileviewplus.utils
 
-import java.io.File
-import java.security.MessageDigest
+import com.arapps.fileviewplus.model.FileNode
 
 object FileAnalytics {
 
     data class FileInsight(
-        val file: File,
+        val file: FileNode,
         val size: Long,
-        val lastModified: Long,
-
+        val lastModified: Long
     )
 
-    fun getInsights(files: List<File>): List<FileInsight> {
+    fun getInsights(files: List<FileNode>): List<FileInsight> {
         return files.map {
             FileInsight(
                 file = it,
-                size = it.length(),
-                lastModified = it.lastModified(),
-
+                size = it.size,
+                lastModified = it.lastModified
             )
         }
     }
@@ -32,7 +29,4 @@ object FileAnalytics {
         val threshold = largerThanMB * 1024 * 1024L
         return insights.filter { it.size > threshold }
     }
-
-
-
 }

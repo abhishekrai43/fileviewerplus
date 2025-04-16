@@ -20,11 +20,10 @@ object StorageStats {
                     .flatMap { it.days }
                     .flatMap { it.files }
 
-                val totalBytes = allFiles.sumOf { it.length() }
+                val totalBytes = allFiles.sumOf { it.size }
                 Stat(category.name, totalBytes)
             }
         }
-
 
     fun formatSize(bytes: Long): String {
         val kb = 1024

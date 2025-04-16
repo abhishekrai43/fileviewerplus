@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,20 +19,21 @@ import java.io.File
 @Composable
 fun FolderActionsMenu(
     folderName: String,
-    files: List<File>,
+    files: List<FileNode>,
     modifier: Modifier = Modifier,
-    onDeleted: (() -> Unit)? = null // Optional callback
+    onDeleted: (() -> Unit)? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     var zipping by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     // Zipping Progress Dialog
     if (zipping) {
         AlertDialog(
-            onDismissRequest = {}, // Prevent dismiss
+            onDismissRequest = {}, // Cannot cancel
             confirmButton = {},
             text = {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -43,7 +45,7 @@ fun FolderActionsMenu(
         )
     }
 
-    // Delete Confirmation Dialog
+    // Confirm Delete Dialog
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -53,8 +55,11 @@ fun FolderActionsMenu(
                 TextButton(onClick = {
                     confirmDelete = false
                     coroutineScope.launch(Dispatchers.IO) {
-                        val folder = files.firstOrNull()?.parentFile
-                        val deleted = folder?.deleteRecursively() == true
+                        val firstPath = files.firstOrNull()?.path
+                        val folder = firstPath?.let { File(it).parentFile }
+                        val deleted = folder?.takeIf { it.exists() && it.isDirectory }
+                            ?.deleteRecursively() == true
+
                         withContext(Dispatchers.Main) {
                             if (deleted) {
                                 Toast.makeText(context, "Folder deleted", Toast.LENGTH_SHORT).show()
@@ -92,17 +97,18 @@ fun FolderActionsMenu(
                     zipping = true
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val zipFile = ZipUtils.createZip(context, folderName, files)
+                            val realFiles = files.map { File(it.path) }.filter { it.exists() && it.isFile }
+                            val zipFile = ZipUtils.createZip(context, folderName, realFiles)
                             withContext(Dispatchers.Main) {
                                 if (zipFile != null) {
                                     ZipUtils.shareZip(context, zipFile)
                                 } else {
-                                    Toast.makeText(context, "Failed to create ZIP file.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Failed to create ZIP file", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "Zipping failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Zipping failed: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         } finally {
                             withContext(Dispatchers.Main) {
@@ -113,6 +119,13 @@ fun FolderActionsMenu(
                 }
             )
 
+            DropdownMenuItem(
+                text = { Text("Delete Folder") },
+                onClick = {
+                    expanded = false
+                    confirmDelete = true
+                }
+            )
         }
     }
 }
