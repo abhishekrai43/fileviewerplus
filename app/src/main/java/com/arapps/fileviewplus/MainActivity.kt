@@ -1,5 +1,6 @@
 package com.arapps.fileviewplus
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -17,7 +18,13 @@ import androidx.lifecycle.lifecycleScope
 import com.arapps.fileviewplus.settings.ThemeSettings
 import com.arapps.fileviewplus.ui.FileViewApp
 import com.arapps.fileviewplus.ui.theme.FileFlowPlusTheme
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
 import kotlinx.coroutines.launch
+
+private const val UPDATE_REQUEST_CODE = 1001
 
 class MainActivity : ComponentActivity() {
 
@@ -26,25 +33,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        permissionPreviouslyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            !Environment.isExternalStorageManager()
-        } else {
-            false
-        }
-
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && permissionPreviouslyDenied) {
-            try {
-                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:$packageName")
-                }
-                if (intent.resolveActivity(packageManager) != null) {
-                    startActivity(intent)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        checkStoragePermission()
+        checkForAppUpdate(this, this)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -73,12 +63,49 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
-        // 🔁 Recreate the activity once if user just granted permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             permissionPreviouslyDenied &&
             Environment.isExternalStorageManager()
         ) {
             recreate()
+        }
+    }
+
+    private fun checkStoragePermission() {
+        permissionPreviouslyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            !Environment.isExternalStorageManager()
+        } else {
+            false
+        }
+
+        if (permissionPreviouslyDenied) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun checkForAppUpdate(context: Activity, activity: Activity) {
+        val updateManager = AppUpdateManagerFactory.create(context)
+        val infoTask = updateManager.appUpdateInfo
+
+        infoTask.addOnSuccessListener { updateInfo ->
+            if (updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                updateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
+            ) {
+                updateManager.startUpdateFlow(
+                    updateInfo,
+                    activity,
+                    AppUpdateOptions.defaultOptions(AppUpdateType.IMMEDIATE)
+                )
+            }
         }
     }
 }

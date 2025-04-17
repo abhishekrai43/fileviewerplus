@@ -54,7 +54,7 @@ androidx-datastore-core = { group = "androidx.datastore", name = "datastore-core
 google-billing = { group = "com.android.billingclient", name = "billing-ktx", version = "6.1.0" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3Ui" }
-
+play-inappupdate = { group = "com.google.android.play", name = "app-update", version = "2.1.0" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

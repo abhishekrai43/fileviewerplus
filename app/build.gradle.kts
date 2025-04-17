@@ -66,6 +66,7 @@ dependencies {
     implementation(libs.firebase.coroutines)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.billing)
+    implementation(libs.play.inappupdate)
 
 
 

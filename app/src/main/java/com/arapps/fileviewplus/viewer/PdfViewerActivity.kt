@@ -1,5 +1,6 @@
 package com.arapps.fileviewplus.viewer
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.Bundle
@@ -9,11 +10,14 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
@@ -21,6 +25,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import com.arapps.fileviewplus.model.FileNode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class PdfViewerActivity : ComponentActivity() {
@@ -61,39 +67,62 @@ class PdfViewerActivity : ComponentActivity() {
 
 @Composable
 private fun PdfViewerScreen(file: File) {
-    val pages = remember(file.path) { loadPdfPages(file) }
+    var pages by remember { mutableStateOf<List<Bitmap>?>(null) }
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale *= zoom
-                    offset += pan
+    LaunchedEffect(file.path) {
+        pages = withContext(Dispatchers.IO) {
+            loadPdfPages(file)
+        }
+    }
+
+    if (pages == null) {
+        // Show loading UI while pages are being rendered
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        scale = (scale * zoom).coerceIn(1f, 4f)
+                        offset += pan
+                    }
                 }
-            }
-            .padding(16.dp)
-    ) {
-        pages.forEach { bitmap ->
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = null,
+        ) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .graphicsLayer(
                         scaleX = scale,
                         scaleY = scale,
                         translationX = offset.x,
                         translationY = offset.y
                     )
-                    .padding(bottom = 12.dp)
-            )
+                    .padding(16.dp)
+            ) {
+                pages!!.forEach { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                    )
+                }
+            }
         }
     }
 }
+
+
+
+
 
 private fun loadPdfPages(file: File): List<Bitmap> {
     val pages = mutableListOf<Bitmap>()
