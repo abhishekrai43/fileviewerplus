@@ -19,18 +19,20 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.ZipUtils
+import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
 
 @Composable
 fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
     val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
+    val fileNode = file.toFileNode()
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .padding(12.dp)
-                .clickable { openFile(context, file) },
+                .clickable { ViewerRouter.openFile(context, fileNode, fromVault = true) },
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null)
@@ -57,7 +59,7 @@ fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
                     }
                 },
                 onZipShare = {
-                    val zipFile = ZipUtils.createZip(context, file.name, listOf(file.toFileNode()))
+                    val zipFile = ZipUtils.createZip(context, file.name, listOf(fileNode))
                     if (zipFile != null) ZipUtils.shareZip(context, zipFile)
                     else Toast.makeText(context, "Zip failed", Toast.LENGTH_SHORT).show()
                 }
@@ -65,6 +67,7 @@ fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
         }
     }
 }
+
 fun File.toFileNode(): FileNode {
     return FileNode(
         name = name,
