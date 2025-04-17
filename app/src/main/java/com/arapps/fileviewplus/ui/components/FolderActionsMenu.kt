@@ -97,8 +97,8 @@ fun FolderActionsMenu(
                     zipping = true
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val realFiles = files.map { File(it.path) }.filter { it.exists() && it.isFile }
-                            val zipFile = ZipUtils.createZip(context, folderName, realFiles)
+                            val zipFile = ZipUtils.createZip(context, folderName, files)
+
                             withContext(Dispatchers.Main) {
                                 if (zipFile != null) {
                                     ZipUtils.shareZip(context, zipFile)

@@ -13,8 +13,8 @@ object DriveShareUtils {
         try {
             val uri: Uri = FileProvider.getUriForFile(
                 context,
-                "${context.packageName}.fileprovider",
-                file
+                "com.arapps.fileviewplus.fileprovider",
+                        file
             )
 
             val intent = Intent(Intent.ACTION_SEND).apply {

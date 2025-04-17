@@ -9,8 +9,12 @@ android {
 
     defaultConfig {
         minSdk = 24
+    }
+
+    lint {
         targetSdk = 35
     }
+
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

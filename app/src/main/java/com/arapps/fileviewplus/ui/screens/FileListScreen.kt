@@ -1,7 +1,5 @@
 package com.arapps.fileviewplus.ui.screens
 
-import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -11,31 +9,29 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FileActionsMenu
 import com.arapps.fileviewplus.ui.components.FilePreview
 import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
-import java.io.File
+import com.arapps.fileviewplus.utils.SafUtils
+import com.arapps.fileviewplus.viewer.ViewerRouter
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
     val context = LocalContext.current
-    var requestAccessFor by remember { mutableStateOf<File?>(null) }
+    var requestAccessFor by remember { mutableStateOf<String?>(null) }
 
     val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let {
@@ -47,7 +43,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
 
     LaunchedEffect(requestAccessFor) {
         requestAccessFor?.let {
-            safLauncher.launch(Uri.fromFile(it))
+            safLauncher.launch(Uri.parse(it))
             requestAccessFor = null
         }
     }
@@ -72,13 +68,14 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(day.files) { file ->
-                val fileObj = File(file.path)
-                val isProtected = SafUtils.isSafProtected(fileObj)
+                val isProtected = remember(file.path) { SafUtils.isSafProtected(file) }
 
                 if (isProtected) {
                     GrantFullAccessCard(
-                        folderPath = fileObj.parent ?: "Unknown Folder",
-                        onGrantClick = { requestAccessFor = fileObj.parentFile }
+                        folderPath = file.path.substringBeforeLast('/'),
+                        onGrantClick = {
+                            requestAccessFor = file.path
+                        }
                     )
                 }
 
@@ -86,7 +83,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = !isProtected) {
-                            openFileSafely(fileObj, context)
+                            ViewerRouter.openFile(context, file, fromVault = false)
                         }
                 ) {
                     Row(
@@ -112,26 +109,5 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-fun openFileSafely(file: File, context: Context) {
-    try {
-        val uri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        context.startActivity(Intent.createChooser(intent, "Open with"))
-    } catch (e: ActivityNotFoundException) {
-        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Unable to open file", Toast.LENGTH_SHORT).show()
     }
 }

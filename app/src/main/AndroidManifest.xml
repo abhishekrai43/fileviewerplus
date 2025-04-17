@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.arapps.fileviewplus">
 
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
-
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -21,9 +23,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Fileviewplus"
         tools:targetApi="31">
+
+        <!-- File Provider -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:authorities="com.arapps.fileviewplus.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
@@ -31,7 +35,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-
+        <!-- Launcher Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,11 +43,33 @@
             android:theme="@style/Theme.Fileviewplus">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Viewer Activities -->
+
+        <activity
+            android:name="com.arapps.fileviewwplus.viewer.ImageViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus"/>
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.VideoViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus"/>
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.PdfViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus"/>
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.TextViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus"/>
+
     </application>
+
+    <!-- Required for intent checks -->
     <queries>
         <intent>
             <action android:name="android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION" />

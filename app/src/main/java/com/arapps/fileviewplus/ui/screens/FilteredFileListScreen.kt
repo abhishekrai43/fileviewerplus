@@ -1,7 +1,6 @@
+// File: app/src/main/java/com/arapps/fileviewplus/ui/screens/FilteredFileListScreen.kt
 package com.arapps.fileviewplus.ui.screens
 
-import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -22,26 +21,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
 import java.io.File
-
-enum class FileSuggestionCategory(val label: String) {
-    OLD("\uD83D\uDCC5 Old Files"),
-    LARGE("\uD83D\uDC00 Large Files")
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilteredFileListScreen(
-    files: List<FileNode>,
+    files: List<File>,
     title: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenViewer: (File) -> Unit
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableStateOf(FileSuggestionCategory.OLD) }
     var requestAccessFor by remember { mutableStateOf<File?>(null) }
+    val shownAccessCards = remember { mutableSetOf<String>() }
 
     val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let {
@@ -58,24 +52,17 @@ fun FilteredFileListScreen(
         }
     }
 
-    BackHandler { onBack() }
-
-    val oldFiles = files.filter {
-        System.currentTimeMillis() - it.lastModified > 6 * 30 * 24 * 60 * 60 * 1000L
-    }
-    val largeFiles = files.filter {
-        it.size > 200 * 1024 * 1024
-    }
-
-    val currentFiles = when (selectedTab) {
-        FileSuggestionCategory.OLD -> oldFiles
-        FileSuggestionCategory.LARGE -> largeFiles
-    }
+    BackHandler(onBack = onBack)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Smart Cleanup", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -89,29 +76,7 @@ fun FilteredFileListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SuggestionChip(
-                    category = FileSuggestionCategory.OLD,
-                    isSelected = selectedTab == FileSuggestionCategory.OLD,
-                    count = oldFiles.size,
-                    onClick = { selectedTab = FileSuggestionCategory.OLD }
-                )
-                SuggestionChip(
-                    category = FileSuggestionCategory.LARGE,
-                    isSelected = selectedTab == FileSuggestionCategory.LARGE,
-                    count = largeFiles.size,
-                    onClick = { selectedTab = FileSuggestionCategory.LARGE }
-                )
-            }
-
-            HorizontalDivider()
-
-            if (currentFiles.isEmpty()) {
+            if (files.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -124,15 +89,14 @@ fun FilteredFileListScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(items = currentFiles) { file ->
-                        val isProtected = SafUtils.isSafProtected(File(file.path))
+                    items(items = files) { file ->
+                        val isProtected = !file.canRead()
+                        val parentPath = file.parent ?: "Unknown"
 
-                        if (isProtected) {
+                        if (isProtected && shownAccessCards.add(parentPath)) {
                             GrantFullAccessCard(
-                                folderPath = File(file.path).parent ?: "Unknown Folder",
-                                onGrantClick = {
-                                    requestAccessFor = File(file.path).parentFile
-                                }
+                                folderPath = parentPath,
+                                onGrantClick = { requestAccessFor = file.parentFile }
                             )
                         }
 
@@ -140,24 +104,32 @@ fun FilteredFileListScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = !isProtected) {
-                                    openFileSafely(File(file.path), context)
+                                    onOpenViewer(file)
                                 },
                             colors = CardDefaults.elevatedCardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    file.name,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    "${file.size / 1024} KB",
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    FilePreviewThumbnail(file)
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column {
+                                        Text(
+                                            file.name,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "${file.length() / 1024} KB",
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -166,20 +138,3 @@ fun FilteredFileListScreen(
         }
     }
 }
-
-@Composable
-private fun SuggestionChip(
-    category: FileSuggestionCategory,
-    isSelected: Boolean,
-    count: Int,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onClick,
-        label = {
-            Text("${category.label} ($count)")
-        }
-    )
-}
-

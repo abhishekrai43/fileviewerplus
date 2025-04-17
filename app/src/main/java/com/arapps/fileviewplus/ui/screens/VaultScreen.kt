@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.vault.*
 import com.arapps.fileviewplus.utils.*
 import com.arapps.fileviewplus.utils.VaultRestoreManager.restoreVaultFromZip
@@ -248,7 +249,7 @@ fun VaultScreen(
                                                 val zip = ZipUtils.createZip(
                                                     context,
                                                     file.name,
-                                                    file.listFiles()?.toList().orEmpty()
+                                                    file.listFiles()?.map { it.toFileNode() }.orEmpty()
                                                 )
                                                 zip?.let { ZipUtils.shareZip(context, it) }
                                             }
@@ -403,4 +404,13 @@ if (showEnterPin) {
             )
         }
     }
+}
+fun File.toFileNode(): FileNode {
+    return FileNode(
+        name = name,
+        path = absolutePath,
+        type = FileNode.FileType.OTHER,
+        size = length(),
+        lastModified = lastModified()
+    )
 }

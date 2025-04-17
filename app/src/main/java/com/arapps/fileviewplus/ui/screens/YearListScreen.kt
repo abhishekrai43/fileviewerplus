@@ -25,7 +25,7 @@ fun YearListScreen(
             .padding(horizontal = 16.dp, vertical = 24.dp)
     ) {
         Text(
-            text = "📁 ${category.name}",
+            text = "\uD83D\uDCC1 ${category.name}",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -57,7 +57,7 @@ fun YearListScreen(
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "📁 ${year.name}",
+                            text = "\uD83D\uDCC1 ${year.name}",
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.ZipUtils
 import java.io.File
 
@@ -56,7 +57,7 @@ fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
                     }
                 },
                 onZipShare = {
-                    val zipFile = ZipUtils.createZip(context, file.name, listOf(file))
+                    val zipFile = ZipUtils.createZip(context, file.name, listOf(file.toFileNode()))
                     if (zipFile != null) ZipUtils.shareZip(context, zipFile)
                     else Toast.makeText(context, "Zip failed", Toast.LENGTH_SHORT).show()
                 }
@@ -64,11 +65,20 @@ fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
         }
     }
 }
+fun File.toFileNode(): FileNode {
+    return FileNode(
+        name = name,
+        path = absolutePath,
+        type = FileNode.FileType.OTHER, // or classify based on extension
+        size = length(),
+        lastModified = lastModified()
+    )
+}
 
 private fun openFile(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(
         context,
-        "${context.packageName}.fileprovider",
+        "com.arapps.fileviewplus.fileprovider",
         file
     )
     val intent = Intent(Intent.ACTION_VIEW).apply {

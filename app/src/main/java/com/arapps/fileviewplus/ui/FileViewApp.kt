@@ -1,6 +1,6 @@
 package com.arapps.fileviewplus.ui
 
-import NavigationState
+
 import ScanningOverlay
 import android.annotation.SuppressLint
 import android.content.Context
@@ -20,8 +20,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.arapps.fileviewplus.logic.FileScanner
 import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileviewplus.model.NavigationState
 import com.arapps.fileviewplus.ui.components.FileViewTopAppBar
 import com.arapps.fileviewplus.ui.screens.*
+import com.arapps.fileviewplus.viewer.ViewerRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +74,10 @@ fun FileViewApp(isDarkMode: Boolean, onToggleTheme: (Boolean) -> Unit) {
         ScanningOverlay()
         return
     }
+    if (nav.value.viewerFile != null) {
+        ViewerRouter.openFile(context, nav.value.viewerFile!!, nav.value.viewerIsVault)
+        return
+    }
 
     when {
         nav.value.day != null -> FileListScreen(nav.value.day!!) {
@@ -117,9 +123,11 @@ fun FileViewApp(isDarkMode: Boolean, onToggleTheme: (Boolean) -> Unit) {
             onGoHome = { nav.value = NavigationState() },
             isDarkMode = isDarkMode,
             onToggleTheme = onToggleTheme,
-            onVaultClick = { nav.value = nav.value.copy(showVault = true) }
+            onVaultClick = { nav.value = nav.value.copy(showVault = true) },
+            nav = nav
         )
     }
+
 }
 
 fun checkStoragePermission(): Boolean {

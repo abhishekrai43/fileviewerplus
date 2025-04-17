@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -18,17 +17,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import androidx.documentfile.provider.DocumentFile
 import com.arapps.fileviewplus.model.FileNode
-import com.arapps.fileviewplus.ui.screens.FileCategory
-import java.io.File
+
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.FilterChip
+import com.arapps.fileviewplus.utils.SafUtils
+import com.arapps.fileviewplus.viewer.ViewerRouter
 
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -37,7 +35,6 @@ fun FileTypeExplorerScreen(
     categories: List<FileNode.Category>
 ) {
     val context = LocalContext.current
-    val activity = LocalContext.current as? ComponentActivity
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -114,8 +111,7 @@ fun FileTypeExplorerScreen(
                     }
 
                     items(files) { file ->
-                        val realFile = File(file.path)
-                        val isProtected = !realFile.canRead()
+                        val isProtected = remember(file.path) { SafUtils.isSafProtected(file) }
 
                         ListItem(
                             headlineContent = {
@@ -150,18 +146,9 @@ fun FileTypeExplorerScreen(
                                 .fillMaxWidth()
                                 .clickable {
                                     if (isProtected) {
-                                        launcher.launch(Uri.fromFile(realFile.parentFile))
+                                        launcher.launch(Uri.parse(file.path.substringBeforeLast('/')))
                                     } else {
-                                        val uri = FileProvider.getUriForFile(
-                                            context,
-                                            context.packageName + ".fileprovider",
-                                            realFile
-                                        )
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(uri, getMimeType(file.name))
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(Intent.createChooser(intent, "Open with"))
+                                        ViewerRouter.openFile(context, file, fromVault = false)
                                     }
                                 }
                         )

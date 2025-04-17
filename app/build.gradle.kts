@@ -67,6 +67,8 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.billing)
 
+
+
     // Jetpack Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -87,6 +89,8 @@ dependencies {
     implementation(libs.lottie.compose)
     implementation(libs.apache.ftpserver)
     implementation(project(":ftpserver"))
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
 
 
     // Unit Testing

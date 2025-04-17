@@ -32,8 +32,8 @@ object VaultBackupManager {
 
             val uri: Uri = FileProvider.getUriForFile(
                 context,
-                "${context.packageName}.fileprovider",
-                backupFile
+                "com.arapps.fileviewplus.fileprovider",
+                        backupFile
             )
 
             val intent = Intent(Intent.ACTION_SEND).apply {
