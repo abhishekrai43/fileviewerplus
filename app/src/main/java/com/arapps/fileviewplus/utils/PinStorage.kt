@@ -14,8 +14,8 @@ fun storeRecovery(context: Context, hint: String, answer: String) {
 
 fun getStoredRecovery(context: Context): RecoveryData? {
     val prefs = context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
-    val hint = prefs.getString("recovery_hint", null)
-    val answer = prefs.getString("recovery_answer", null)
+    val hint = prefs.getString("vault_hint", null)
+    val answer = prefs.getString("vault_answer", null)
     val pin = prefs.getString("vault_pin", null)
 
     return if (!hint.isNullOrBlank() && !answer.isNullOrBlank() && !pin.isNullOrBlank()) {

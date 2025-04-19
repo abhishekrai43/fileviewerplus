@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
 
 }
 
@@ -67,6 +68,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.billing)
     implementation(libs.play.inappupdate)
+    implementation(libs.zip4j)
+    implementation(libs.gson)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.firebase.messaging)
+
 
 
 

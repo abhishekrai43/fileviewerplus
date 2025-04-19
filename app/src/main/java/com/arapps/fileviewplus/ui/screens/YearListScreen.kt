@@ -23,7 +23,8 @@ fun YearListScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 24.dp)
-    ) {
+    )
+    {Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "\uD83D\uDCC1 ${category.name}",
             style = MaterialTheme.typography.headlineSmall,

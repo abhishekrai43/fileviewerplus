@@ -1,9 +1,16 @@
+// File: logic/FileScanner.kt
+
 package com.arapps.fileviewplus.logic
 
+import android.content.Context
+import android.os.Environment
+import com.arapps.fileviewplus.model.CategoryListType
 import com.arapps.fileviewplus.model.FileNode
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import com.google.gson.Gson
+
 
 object FileScanner {
 
@@ -11,16 +18,45 @@ object FileScanner {
     private val videoExt = listOf("mp4", "mkv", "avi", "3gp")
     private val docExt = listOf("pdf", "doc", "docx", "txt", "xls", "ppt")
 
-    private val monthFormat = SimpleDateFormat("MMM", Locale.getDefault()) // Jan, Feb
+    private val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
     private val yearFormat = SimpleDateFormat("yyyy", Locale.getDefault())
     private val dayFormat = SimpleDateFormat("dd-MMM-yyyy", Locale.getDefault())
 
+    private val gson = Gson()
+    private const val CACHE_FILE = "cached_file_structure.json"
+    private const val PREF_KEY = "last_scan_time"
+    private const val SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6 hours
+
+    fun shouldScan(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("fileflow", Context.MODE_PRIVATE)
+        val lastScan = prefs.getLong(PREF_KEY, 0L)
+        return System.currentTimeMillis() - lastScan > SCAN_INTERVAL_MS
+    }
+
+    fun loadFromCache(context: Context): List<FileNode.Category> {
+        val cacheFile = File(context.filesDir, CACHE_FILE)
+        return if (cacheFile.exists()) {
+            val json = cacheFile.readText()
+            gson.fromJson(json, CategoryListType)
+        } else emptyList()
+    }
+
+    fun scanAndCache(context: Context): List<FileNode.Category> {
+        val result = scanStorage(Environment.getExternalStorageDirectory())
+
+        val prefs = context.getSharedPreferences("fileflow", Context.MODE_PRIVATE)
+        prefs.edit().putLong(PREF_KEY, System.currentTimeMillis()).apply()
+
+        val cacheFile = File(context.filesDir, CACHE_FILE)
+        cacheFile.writeText(gson.toJson(result))
+
+        return result
+    }
+
     fun scanStorage(rootDir: File): List<FileNode.Category> {
         val categorized = mutableMapOf<String, MutableMap<String, MutableMap<String, MutableMap<String, MutableList<FileNode>>>>>()
-
         rootDir.walkTopDown().forEach { file ->
             if (!file.isFile) return@forEach
-
             val ext = file.extension.lowercase(Locale.getDefault())
             val category = when {
                 imageExt.contains(ext) -> "IMG"
@@ -37,15 +73,10 @@ object FileScanner {
             val fileNode = FileNode(
                 name = file.name,
                 path = file.absolutePath,
-                type = when (category) {
-                    "IMG" -> FileNode.FileType.IMAGE
-                    "VID" -> FileNode.FileType.VIDEO
-                    else -> FileNode.FileType.DOCUMENT
-                },
+                type = FileNode.FileType.fromExtension(ext),
                 size = file.length(),
                 lastModified = file.lastModified()
             )
-
 
             val yearMap = categorized.getOrPut(category) { mutableMapOf() }
             val monthMap = yearMap.getOrPut(year) { mutableMapOf() }
@@ -75,7 +106,7 @@ object FileScanner {
                     )
                 }.sortedByDescending { it.name.toIntOrNull() ?: 0 }
             )
-        }.sortedBy { it.name } // Keep: DOC, IMG, VID order
+        }.sortedBy { it.name }
     }
 
     private fun monthNameToNumber(month: String): Int {

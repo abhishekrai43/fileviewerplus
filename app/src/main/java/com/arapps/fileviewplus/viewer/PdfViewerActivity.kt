@@ -1,21 +1,19 @@
 package com.arapps.fileviewplus.viewer
 
-import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,19 +26,16 @@ import com.arapps.fileviewplus.model.FileNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 
 class PdfViewerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val path = intent.getStringExtra("path")
-        if (path.isNullOrBlank()) {
-            finish()
-            return
-        }
+        val file = resolveFileFromIntent(intent)
 
-        val file = File(path)
-        if (!file.exists() || !file.canRead()) {
+        if (file == null || !file.exists() || !file.canRead()) {
+            Toast.makeText(this, "Cannot open PDF", Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -54,9 +49,28 @@ class PdfViewerActivity : ComponentActivity() {
         }
     }
 
+    private fun resolveFileFromIntent(intent: Intent): File? {
+        // Case 1: internal intent with direct file path
+        intent.getStringExtra("path")?.let { path ->
+            return File(path)
+        }
+
+        // Case 2: external open with (content:// or file://)
+        val uri = intent.data ?: return null
+        return try {
+            val inputStream = contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File(cacheDir, "external_temp_${System.currentTimeMillis()}.pdf")
+            FileOutputStream(tempFile).use { output -> inputStream.copyTo(output) }
+            tempFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     companion object {
-        fun launch(context: android.content.Context, fileNode: FileNode, fromVault: Boolean) {
-            val intent = android.content.Intent(context, PdfViewerActivity::class.java).apply {
+        fun launch(context: Context, fileNode: FileNode, fromVault: Boolean) {
+            val intent = Intent(context, PdfViewerActivity::class.java).apply {
                 putExtra("path", fileNode.path)
                 putExtra("fromVault", fromVault)
             }
@@ -78,11 +92,7 @@ private fun PdfViewerScreen(file: File) {
     }
 
     if (pages == null) {
-        // Show loading UI while pages are being rendered
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
     } else {
@@ -119,10 +129,6 @@ private fun PdfViewerScreen(file: File) {
         }
     }
 }
-
-
-
-
 
 private fun loadPdfPages(file: File): List<Bitmap> {
     val pages = mutableListOf<Bitmap>()

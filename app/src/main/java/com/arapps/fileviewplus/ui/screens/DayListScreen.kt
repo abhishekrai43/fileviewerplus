@@ -1,5 +1,7 @@
 package com.arapps.fileviewplus.ui.screens
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,11 +16,16 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FolderActionsMenu
+import com.arapps.fileviewplus.viewer.ViewerRouter
+import java.io.File
 
+@RequiresApi(Build.VERSION_CODES.Q)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayListScreen(
@@ -105,10 +112,15 @@ fun DayListScreen(
                 }
             } else {
                 items(allDayFiles) { file ->
+                    val context = LocalContext.current
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1f),
+                            .aspectRatio(1f)
+                        .clickable {
+                        ViewerRouter.openFile(context, file, fromVault = false)
+                    },
                         elevation = CardDefaults.cardElevation(3.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = MaterialTheme.shapes.medium
@@ -119,13 +131,7 @@ fun DayListScreen(
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Image(
-                                painter = rememberAsyncImagePainter(file.path),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            )
+                            FilePreviewThumbnail(file = File(file.path))
                             Text(
                                 text = file.name,
                                 style = MaterialTheme.typography.bodyMedium,

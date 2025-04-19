@@ -1,3 +1,5 @@
+// File: com/arapps/fileviewplus/MainActivity.kt
+
 package com.arapps.fileviewplus
 
 import android.app.Activity
@@ -15,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import com.arapps.fileviewplus.notifications.FirebaseTokenLogger
 import com.arapps.fileviewplus.settings.ThemeSettings
 import com.arapps.fileviewplus.ui.FileViewApp
 import com.arapps.fileviewplus.ui.theme.FileFlowPlusTheme
@@ -32,9 +35,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        checkStoragePermission()
-        checkForAppUpdate(this, this)
+        com.google.firebase.FirebaseApp.initializeApp(this)
+        FirebaseTokenLogger.logToken()
+        checkAndRequestStoragePermission()
+        checkForAppUpdate()
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -63,15 +67,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             permissionPreviouslyDenied &&
             Environment.isExternalStorageManager()
         ) {
-            recreate()
+            recreate() // Relaunch if permission granted from settings
         }
     }
 
-    private fun checkStoragePermission() {
+    private fun checkAndRequestStoragePermission() {
         permissionPreviouslyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             !Environment.isExternalStorageManager()
         } else {
@@ -87,25 +92,28 @@ class MainActivity : ComponentActivity() {
                     startActivity(intent)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                e.printStackTrace() // Log permission intent failure
             }
         }
     }
 
-    private fun checkForAppUpdate(context: Activity, activity: Activity) {
-        val updateManager = AppUpdateManagerFactory.create(context)
+    private fun checkForAppUpdate() {
+        val updateManager = AppUpdateManagerFactory.create(this)
         val infoTask = updateManager.appUpdateInfo
 
         infoTask.addOnSuccessListener { updateInfo ->
-            if (updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+            if (
+                updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
                 updateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)
             ) {
                 updateManager.startUpdateFlow(
                     updateInfo,
-                    activity,
+                    this,
                     AppUpdateOptions.defaultOptions(AppUpdateType.IMMEDIATE)
                 )
             }
+        }.addOnFailureListener {
+            it.printStackTrace()
         }
     }
 }

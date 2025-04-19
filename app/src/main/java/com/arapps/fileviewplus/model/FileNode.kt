@@ -1,5 +1,6 @@
 package com.arapps.fileviewplus.model
 
+import com.google.common.reflect.TypeToken
 import java.io.File
 
 data class FileNode(
@@ -8,6 +9,7 @@ data class FileNode(
     val type: FileType,
     val size: Long,
     val lastModified: Long
+
 ) {
     val extension: String
         get() = path.substringAfterLast('.', missingDelimiterValue = "").lowercase()
@@ -33,19 +35,21 @@ data class FileNode(
     )
 
     enum class FileType {
-        IMAGE,
-        VIDEO,
-        DOCUMENT,
-        OTHER;
+        Image, Video, Audio, Document, Pdf, Text, Apk, Zip,FfpSecure, Other;
 
         companion object {
-            fun from(file: File): FileType {
-                val ext = file.extension.lowercase()
-                return when (ext) {
-                    "jpg", "jpeg", "png", "webp", "gif", "bmp" -> IMAGE
-                    "mp4", "mkv", "avi", "mov", "3gp" -> VIDEO
-                    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "json", "xml" -> DOCUMENT
-                    else -> OTHER
+            fun fromExtension(ext: String): FileType {
+                return when (ext.lowercase()) {
+                    "jpg", "jpeg", "png", "webp", "bmp", "gif" -> Image
+                    "mp4", "mkv", "3gp", "avi", "mov", "flv" -> Video
+                    "mp3", "wav", "aac", "ogg", "flac" -> Audio
+                    "pdf" -> Pdf
+                    "txt", "log", "md" -> Text
+                    "apk" -> Apk
+                    "zip", "rar", "7z" -> Zip
+                    "doc", "docx", "xls", "xlsx", "ppt", "pptx" -> Document
+                    "ffpsecure" -> FfpSecure
+                    else -> Other
                 }
             }
         }
@@ -55,9 +59,10 @@ data class FileNode(
         fun fromFile(file: File): FileNode = FileNode(
             name = file.name,
             path = file.absolutePath,
-            type = FileType.from(file),
+            type = FileType.fromExtension(file.extension),
             size = file.length(),
             lastModified = file.lastModified()
         )
     }
 }
+val CategoryListType = object : TypeToken<List<FileNode.Category>>() {}.type

@@ -17,7 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileviewplus.ui.screens.FileCategory
 import com.arapps.fileviewplus.utils.ZipUtils
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
@@ -26,57 +28,67 @@ import java.io.File
 fun VaultFileCard(file: File, onFileChanged: () -> Unit) {
     val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
-    val fileNode = file.toFileNode()
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                ViewerRouter.openFile(context, file.toFileNode(), fromVault = true)
+            }
+    ) {
         Row(
             modifier = Modifier
                 .padding(12.dp)
-                .clickable { ViewerRouter.openFile(context, fileNode, fromVault = true) },
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null)
-            Spacer(Modifier.width(12.dp))
-            Text(file.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Options")
+            Column(modifier = Modifier.weight(1f)) {
+                Text(file.name, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    StorageStats.formatSize(file.length()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
-            VaultFileOptionsDropdown(
-                expanded = menuExpanded,
-                onDismiss = { menuExpanded = false },
-                onRename = {
-                    val renamed = File(file.parent, "${file.name}_renamed")
-                    if (file.renameTo(renamed)) {
-                        Toast.makeText(context, "Renamed", Toast.LENGTH_SHORT).show()
-                        onFileChanged()
-                    }
-                },
-                onDelete = {
-                    if (file.deleteRecursively()) {
-                        Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
-                        onFileChanged()
-                    }
-                },
-                onZipShare = {
-                    val zipFile = ZipUtils.createZip(context, file.name, listOf(fileNode))
-                    if (zipFile != null) ZipUtils.shareZip(context, zipFile)
-                    else Toast.makeText(context, "Zip failed", Toast.LENGTH_SHORT).show()
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
                 }
-            )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = { /* trigger rename flow outside */ menuExpanded = false }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = {
+                            menuExpanded = false
+                            file.delete()
+                            onFileChanged()
+                        }
+                    )
+                }
+            }
         }
     }
 }
+
 
 fun File.toFileNode(): FileNode {
     return FileNode(
         name = name,
         path = absolutePath,
-        type = FileNode.FileType.OTHER, // or classify based on extension
+        type = FileNode.FileType.fromExtension(extension),
         size = length(),
         lastModified = lastModified()
     )
 }
+
 
 private fun openFile(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(

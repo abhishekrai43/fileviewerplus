@@ -3,10 +3,12 @@ package com.arapps.fileviewplus.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +27,7 @@ import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
 import java.io.File
 
+@RequiresApi(Build.VERSION_CODES.Q)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilteredFileListScreen(
@@ -112,8 +115,7 @@ fun FilteredFileListScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    FilePreviewThumbnail(file)
-
+                                    FilePreviewThumbnail(file = File(file.path))
                                     Spacer(modifier = Modifier.width(12.dp))
 
                                     Column {

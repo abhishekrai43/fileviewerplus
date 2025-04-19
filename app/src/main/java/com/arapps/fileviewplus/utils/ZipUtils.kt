@@ -88,10 +88,11 @@ object ZipUtils {
             val tempNode = FileNode(
                 name = tempFile.name,
                 path = tempFile.absolutePath,
-                type = FileNode.FileType.OTHER,
+                type = FileNode.FileType.fromExtension(tempFile.extension),
                 size = tempFile.length(),
                 lastModified = tempFile.lastModified()
             )
+
 
 
             val zip = createZip(context, file.name ?: "archive", listOf(tempNode))
@@ -131,6 +132,34 @@ object ZipUtils {
         } catch (e: Exception) {
             Log.e("ZipUtils", "Sharing failed: ${e.message}")
             false
+        }
+    }
+    fun zipFolder(folder: File, zipFile: File): Boolean {
+        return try {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
+                addFolderToZip(folder, folder, zos)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("ZipUtils", "Failed to zip folder: ${e.message}")
+            zipFile.delete()
+            false
+        }
+    }
+
+    private fun addFolderToZip(rootFolder: File, currentFile: File, zos: ZipOutputStream) {
+        if (currentFile.isDirectory) {
+            currentFile.listFiles()?.forEach { child ->
+                addFolderToZip(rootFolder, child, zos)
+            }
+        } else {
+            val relativePath = rootFolder.toURI().relativize(currentFile.toURI()).path
+            FileInputStream(currentFile).use { input ->
+                val entry = ZipEntry(relativePath)
+                zos.putNextEntry(entry)
+                input.copyTo(zos)
+                zos.closeEntry()
+            }
         }
     }
 }

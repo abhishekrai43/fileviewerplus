@@ -19,12 +19,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FileActionsMenu
 import com.arapps.fileviewplus.ui.components.FilePreview
 import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
 import com.arapps.fileviewplus.utils.SafUtils
 import com.arapps.fileviewplus.viewer.ViewerRouter
+import java.io.File
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,7 +92,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FilePreview(file)
+                        FilePreviewThumbnail(file = File(file.path))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(

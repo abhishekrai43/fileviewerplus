@@ -18,7 +18,9 @@ datastore = "1.0.0"
 playCoreKtx = "1.10.3"
 media3Exoplayer = "1.6.1"
 media3Ui = "1.6.1"
-
+zip4j = "2.11.5"
+gson = "2.10.1"
+work = "2.9.0"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -55,6 +57,10 @@ google-billing = { group = "com.android.billingclient", name = "billing-ktx", ve
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3Ui" }
 play-inappupdate = { group = "com.google.android.play", name = "app-update", version = "2.1.0" }
+zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4j" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+firebase-messaging = "com.google.firebase:firebase-messaging:24.1.1"
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

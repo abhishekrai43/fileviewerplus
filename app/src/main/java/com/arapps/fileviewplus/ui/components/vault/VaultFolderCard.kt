@@ -3,12 +3,12 @@ package com.arapps.fileviewplus.ui.components.vault
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.io.File
 
@@ -20,39 +20,34 @@ fun VaultFolderCard(
     onDeleteConfirmed: () -> Unit,
     onZipAndShare: () -> Unit
 ) {
+    val context = LocalContext.current
     var menuExpanded by remember { mutableStateOf(false) }
 
-    ElevatedCard(
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
             .clickable { onOpen() }
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = Icons.Default.Folder,
-                contentDescription = "Folder",
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            Text(
-                text = folder.name,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(folder.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "${folder.listFiles()?.size ?: 0} items",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Folder Options")
+                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
                 }
-
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }

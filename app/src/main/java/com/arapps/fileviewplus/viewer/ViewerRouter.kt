@@ -3,7 +3,7 @@ package com.arapps.fileviewplus.viewer
 import android.content.Context
 import android.widget.Toast
 import com.arapps.fileviewplus.model.FileNode
-import com.arapps.fileviewwplus.viewer.ImageViewerActivity
+
 
 object ViewerRouter {
 

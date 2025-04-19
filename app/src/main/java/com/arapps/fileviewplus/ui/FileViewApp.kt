@@ -46,12 +46,17 @@ fun FileViewApp(isDarkMode: Boolean, onToggleTheme: (Boolean) -> Unit) {
         isLoading = true
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
-                FileScanner.scanStorage(Environment.getExternalStorageDirectory())
+                if (FileScanner.shouldScan(context)) {
+                    FileScanner.scanAndCache(context)
+                } else {
+                    FileScanner.loadFromCache(context)
+                }
             }
             fileStructure = result
             isLoading = false
         }
     }
+
 
     LaunchedEffect(hasPermission) {
         if (hasPermission) refreshFiles()

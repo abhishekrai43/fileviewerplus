@@ -36,17 +36,12 @@ fun VaultScreen(
 ) {
     val context = LocalContext.current
     val vaultRoot = File(context.filesDir, ".vault").apply { mkdirs() }
+    var showNotes by remember { mutableStateOf(false) }
 
     val uploadLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Toast.makeText(context, "Google Vault backup uploaded!", Toast.LENGTH_LONG).show()
         }
-
-    var pinSet by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        pinSet = getStoredPin(context) != null
-    }
 
     var isBackingUp by remember { mutableStateOf(false) }
     var showEnterPin by remember { mutableStateOf(false) }
@@ -60,10 +55,12 @@ fun VaultScreen(
         vaultItems = vaultRoot.listFiles()?.toList() ?: emptyList()
     }
 
-    val initialUnlocked = getStoredPin(context) == null
-    var unlocked by rememberSaveable { mutableStateOf(initialUnlocked) }
+    var unlocked by rememberSaveable { mutableStateOf(false) }
+    var hasPin by rememberSaveable { mutableStateOf(getStoredPin(context) != null) }
+    val showSetupPin = !hasPin && !unlocked
 
-    val showSetupPin = !pinSet && !unlocked
+
+    val shouldShowVault = hasPin && unlocked
 
     val importLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -102,11 +99,18 @@ fun VaultScreen(
                         IconButton(onClick = { showCreateFolder = true }) {
                             Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
                         }
+                        IconButton(onClick = { showNotes = true }) {
+                            Icon(Icons.Default.StickyNote2, contentDescription = "Vault Notes")
+                        }
                     }
                 }
+
             )
         }
     ) { padding ->
+        if (showNotes) {
+            VaultNotesScreen(onBack = { showNotes = false })
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -125,13 +129,14 @@ fun VaultScreen(
             when {
                 showSetupPin -> {
                     SetupPinDialog(
-                        onPinSet = {
-                            storePin(context, it)
-                            pinSet = true
+                        onPinSet = { pin ->
+                            storePin(context, pin)
+                            hasPin = true
                             unlocked = true
                         },
                         onCancel = onBack
                     )
+
                 }
 
                 !unlocked -> {
@@ -409,8 +414,9 @@ fun VaultScreen(
 fun File.toFileNode(): FileNode = FileNode(
     name = name,
     path = absolutePath,
-    type = FileNode.FileType.OTHER,
+    type = FileNode.FileType.fromExtension(extension),
     size = length(),
     lastModified = lastModified()
-)
+    )
+}
 

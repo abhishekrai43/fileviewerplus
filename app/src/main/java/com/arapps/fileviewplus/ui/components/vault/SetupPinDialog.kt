@@ -1,15 +1,15 @@
+// File: com.arapps.fileviewplus.ui.components.vault.SetupPinDialog.kt
+
 package com.arapps.fileviewplus.ui.components.vault
 
 import android.widget.Toast
 import androidx.compose.runtime.*
-
 import androidx.compose.ui.platform.LocalContext
-
 import com.arapps.fileviewplus.utils.storePinRecovery
 
 @Composable
 fun SetupPinDialog(
-    onPinSet: (String) -> Unit, // ✅ Now receives the actual PIN value
+    onPinSet: (String) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
@@ -30,8 +30,8 @@ fun SetupPinDialog(
         confirmEnabled = isValid,
         onConfirm = {
             storePinRecovery(context, pin.value, hint.value, answer.value)
-            onPinSet(pin.value) // ✅ Pass the PIN to parent
             Toast.makeText(context, "PIN and recovery saved", Toast.LENGTH_SHORT).show()
+            onPinSet(pin.value)  // 👈 closes dialog
         },
         onCancel = onCancel
     )

@@ -3,7 +3,9 @@ package com.arapps.fileflowplus.ui.components
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
@@ -12,12 +14,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import java.io.File
 
+@RequiresApi(Build.VERSION_CODES.Q)
 @Composable
 fun FilePreviewThumbnail(file: File) {
     when {
         file.extension.equals("pdf", ignoreCase = true) -> PdfThumbnail(file)
         file.extension.matches(Regex("jpg|jpeg|png|webp|bmp|gif", RegexOption.IGNORE_CASE)) ->
             ImageThumbnail(file)
+        file.extension.matches(Regex("mp4|mkv|webm|avi|mov", RegexOption.IGNORE_CASE)) -> VideoThumbnail(file) // ✅ Add this
     }
 }
 
@@ -61,3 +65,28 @@ private fun ImageThumbnail(file: File) {
         )
     }
 }
+@RequiresApi(Build.VERSION_CODES.Q)
+@Composable
+private fun VideoThumbnail(file: File) {
+    var thumbnail by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(file) {
+        runCatching {
+            val frame = android.media.ThumbnailUtils.createVideoThumbnail(
+                file,
+                android.util.Size(240, 240), // adjust size as needed
+                null // no cancellation signal
+            )
+            thumbnail = frame
+        }
+    }
+
+    thumbnail?.let {
+        Image(
+            bitmap = it.asImageBitmap(),
+            contentDescription = "Video thumbnail",
+            modifier = Modifier.size(48.dp)
+        )
+    }
+}
+
