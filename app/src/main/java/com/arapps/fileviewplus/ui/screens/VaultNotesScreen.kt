@@ -53,7 +53,7 @@ fun VaultNotesScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Vault Notes", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

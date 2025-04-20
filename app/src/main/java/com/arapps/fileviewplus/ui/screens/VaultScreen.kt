@@ -4,8 +4,10 @@ package com.arapps.fileviewplus.ui.screens
 
 import android.widget.Toast
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,8 +28,10 @@ import com.arapps.fileviewplus.ui.components.vault.*
 import com.arapps.fileviewplus.utils.*
 import com.arapps.fileviewplus.utils.VaultRestoreManager.restoreVaultFromZip
 import com.arapps.fileviewplus.utils.VaultBackupManager.backupVaultToZip
+import kotlinx.coroutines.launch
 import java.io.File
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
@@ -35,15 +39,19 @@ fun VaultScreen(
     onOpenFolder: (File) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val vaultRoot = File(context.filesDir, ".vault").apply { mkdirs() }
     var showNotes by remember { mutableStateOf(false) }
+
 
     val uploadLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Toast.makeText(context, "Google Vault backup uploaded!", Toast.LENGTH_LONG).show()
         }
+    var showBackupPicker by remember { mutableStateOf(false) }
 
-    var isBackingUp by remember { mutableStateOf(false) }
+    var backupMode by remember { mutableStateOf<VaultBackupMode?>(null) }
+
     var showEnterPin by remember { mutableStateOf(false) }
     var showCreateFolder by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<File?>(null) }
@@ -68,15 +76,29 @@ fun VaultScreen(
             refreshVault()
         }
 
-    val restoreLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                restoreVaultFromZip(context, uri, vaultRoot)
-                refreshVault()
-            } else {
-                Toast.makeText(context, "No backup selected", Toast.LENGTH_SHORT).show()
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            backupMode = VaultBackupMode.RESTORE
+            scope.launch {
+                val result = restoreVaultFromZip(context, uri, vaultRoot)
+                backupMode = null
+
+                when (result) {
+                    is VaultRestoreManager.RestoreResult.Success -> {
+                        Toast.makeText(context, "Vault restored from backup!", Toast.LENGTH_LONG).show()
+                        refreshVault()
+                    }
+                    is VaultRestoreManager.RestoreResult.Failure -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                }
             }
+        } else {
+            Toast.makeText(context, "No backup selected", Toast.LENGTH_SHORT).show()
         }
+    }
+
+
 
     LaunchedEffect(unlocked) {
         if (unlocked) refreshVault()
@@ -84,29 +106,41 @@ fun VaultScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Vault", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (unlocked) {
-                        IconButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Default.Add, contentDescription = "Import Files")
-                        }
-                        IconButton(onClick = { showCreateFolder = true }) {
-                            Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
-                        }
-                        IconButton(onClick = { showNotes = true }) {
-                            Icon(Icons.Default.StickyNote2, contentDescription = "Vault Notes")
+            if (showNotes) {
+                TopAppBar(
+                    title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
+                    navigationIcon = {
+                        IconButton(onClick = { showNotes = false }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
-                }
-
-            )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Vault", fontWeight = FontWeight.SemiBold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        if (unlocked) {
+                            IconButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) {
+                                Icon(Icons.Default.Add, contentDescription = "Import Files")
+                            }
+                            IconButton(onClick = { showCreateFolder = true }) {
+                                Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
+                            }
+                            IconButton(onClick = { showNotes = true }) {
+                                Icon(Icons.Default.StickyNote2, contentDescription = "Vault Notes")
+                            }
+                        }
+                    }
+                )
+            }
         }
+
+
     ) { padding ->
         if (showNotes) {
             VaultNotesScreen(onBack = { showNotes = false })
@@ -117,14 +151,24 @@ fun VaultScreen(
                 .padding(padding)
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            if (isBackingUp) {
-                AlertDialog(
+            when (backupMode) {
+                VaultBackupMode.BACKUP -> AlertDialog(
                     onDismissRequest = {},
                     confirmButton = {},
                     title = { Text("Preparing Backup") },
                     text = { Text("Encrypting vault and preparing upload. Please wait...") }
                 )
+
+                VaultBackupMode.RESTORE -> AlertDialog(
+                    onDismissRequest = {},
+                    confirmButton = {},
+                    title = { Text("Restoring Backup") },
+                    text = { Text("Decrypting vault and restoring files. Please wait...") }
+                )
+
+                else -> {}
             }
+
 
             when {
                 showSetupPin -> {
@@ -269,26 +313,9 @@ fun VaultScreen(
                             Spacer(modifier = Modifier.height(28.dp))
 
                             ElevatedButton(
-                                onClick = {
-                                    backupVaultToZip(
-                                        context = context,
-                                        vaultDir = vaultRoot,
-                                        onStarted = { isBackingUp = true },
-                                        onFailed = {
-                                            isBackingUp = false
-                                            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-                                        },
-                                        onReadyToShare = { intent ->
-                                            isBackingUp = false
-                                            Toast.makeText(
-                                                context,
-                                                "Vault backup ready – select Google Drive to upload",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                            uploadLauncher.launch(intent)
-                                        }
-                                    )
-                                },
+                                onClick = { showBackupPicker = true }
+
+,
                                 modifier = Modifier
                                     .align(Alignment.CenterHorizontally)
                                     .fillMaxWidth(0.85f)
@@ -409,7 +436,41 @@ fun VaultScreen(
                 }
             )
         }
-    }
+            if (showBackupPicker) {
+                VaultBackupPickerDialog(
+                    context = context,
+                    vaultItems = vaultItems,
+                    mode = VaultBackupMode.BACKUP,
+                    onDismiss = { showBackupPicker = false },
+                    onConfirm = { selected ->
+                        showBackupPicker = false
+                        backupMode = VaultBackupMode.BACKUP
+                        backupVaultToZip(
+                            context = context,
+                            selectedItems = selected,
+                            onStarted = { backupMode = VaultBackupMode.BACKUP },
+                            onFailed = {
+                                backupMode = null
+                                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                            },
+                            onReadyToShare = { intent ->
+                                backupMode = null
+                                Toast.makeText(
+                                    context,
+                                    "Vault backup ready – select Google Drive to upload",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                uploadLauncher.launch(intent)
+                            }
+                        )
+                    }
+                )
+            }
+
+
+
+
+        }
 }
 fun File.toFileNode(): FileNode = FileNode(
     name = name,
