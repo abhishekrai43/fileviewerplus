@@ -1,6 +1,10 @@
+// File: app/src/main/java/com/arapps/fileviewplus/ui/screens/FileListScreen.kt
 package com.arapps.fileviewplus.ui.screens
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,106 +14,185 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
+import androidx.core.content.ContextCompat
+import com.arapps.fileviewplus.intent.IntentActions
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FileActionsMenu
-import com.arapps.fileviewplus.ui.components.FilePreview
-import com.arapps.fileviewplus.ui.components.GrantFullAccessCard
-import com.arapps.fileviewplus.utils.SafUtils
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
+import androidx.compose.ui.platform.LocalContext
+import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 
-
+/**
+ * FileListScreen
+ *
+ * Production-ready:
+ *  - Accepts top-level Day model (Category/Year/Month/Day).
+ *  - Maintains local mutableStateList for fast UI updates.
+ *  - Listens to ACTION_FILE_DELETED broadcasts and removes stale rows.
+ *  - Provides SAF picker retry support for deletions that require user-grant.
+ *  - Notifies parent (onBack) when list becomes empty to allow aggregates to refresh.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
     val context = LocalContext.current
-    var requestAccessFor by remember { mutableStateOf<String?>(null) }
 
-    val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        uri?.let {
+    // SAF launcher: used when deletion flow requires user to pick a folder (SAF)
+    var pendingSafPath by remember { mutableStateOf<String?>(null) }
+    val safLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
+        if (treeUri == null) {
+            Toast.makeText(context, "Folder selection cancelled", Toast.LENGTH_SHORT).show()
+            pendingSafPath = null
+            return@rememberLauncherForActivityResult
+        }
+        try {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, flags)
-            Toast.makeText(context, "Access granted", Toast.LENGTH_SHORT).show()
+            context.contentResolver.takePersistableUriPermission(treeUri, flags)
+            Toast.makeText(context, "Access granted — retrying deletion", Toast.LENGTH_SHORT).show()
+            // When SAF granted, broadcast an internal intent so deletion manager / caller can retry.
+            // Many delete implementations will reattempt when they see pending state; if not, UI can instruct user.
+            pendingSafPath?.let { path ->
+                // send a platform broadcast asking deletion reattempt (optional pattern)
+                val retryIntent = Intent(IntentActions.ACTION_REQUEST_DELETE_RETRY).apply {
+                    putExtra(IntentActions.EXTRA_DELETED_PATH, path)
+                }
+                context.sendBroadcast(retryIntent)
+            }
+        } catch (t: Throwable) {
+            Toast.makeText(context, "Failed to persist permission: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
+        } finally {
+            pendingSafPath = null
         }
     }
 
-    LaunchedEffect(requestAccessFor) {
-        requestAccessFor?.let {
-            safLauncher.launch(Uri.parse(it))
-            requestAccessFor = null
+    // Mutable UI list (keeps local quick updates). Backed by day.files initial snapshot.
+    val files = remember { mutableStateListOf<FileNode>().apply { addAll(day.files) } }
+
+    // Register broadcast receiver to keep this screen in sync with app-wide deletes.
+    DisposableEffect(Unit) {
+        val filter = IntentFilter(IntentActions.ACTION_FILE_DELETED)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val path = intent?.getStringExtra(IntentActions.EXTRA_DELETED_PATH) ?: return
+                val removed = files.firstOrNull { it.path == path }
+                if (removed != null) {
+                    files.remove(removed)
+                    Toast.makeText(context, "Deleted ${removed.name}", Toast.LENGTH_SHORT).show()
+                    if (files.isEmpty()) onBack()
+                }
+            }
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
         }
     }
 
+    // Top-level scaffold & UI
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("\uD83D\uDCC4 ${day.name}") },
+                title = { Text(text = "Files: ${day.name}") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("\u2B05\uFE0F")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                 }
             )
         }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) { innerPadding ->
+        Surface(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
         ) {
-            items(day.files) { file ->
-                val isProtected = remember(file.path) { SafUtils.isSafProtected(file) }
-
-                if (isProtected) {
-                    GrantFullAccessCard(
-                        folderPath = file.path.substringBeforeLast('/'),
-                        onGrantClick = {
-                            requestAccessFor = file.path
-                        }
-                    )
-                }
-
-                ElevatedCard(
+            if (files.isEmpty()) {
+                // Empty state
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !isProtected) {
-                            ViewerRouter.openFile(context, file, fromVault = false)
-                        }
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Text(text = "No files", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "All files in this day have been deleted or moved.", style = MaterialTheme.typography.bodyMedium)
+                }
+                return@Surface
+            }
+
+            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
+                items(items = files, key = { it.path }) { file ->
+                    val activity = context.findActivity()
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .clickable {
+                                // Verify existence before opening viewer
+                                val f = File(file.path)
+                                if (!f.exists()) {
+                                    files.removeAll { it.path == file.path }
+                                    Toast.makeText(context, "${file.name} not found; removed", Toast.LENGTH_SHORT).show()
+                                    if (files.isEmpty()) onBack()
+                                    return@clickable
+                                }
+                                ViewerRouter.openFile(activity ?: context, file, fromVault = false)
+                            }
                     ) {
-                        FilePreviewThumbnail(file = File(file.path))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = file.name,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
-                            )
-                            Text(
-                                text = "${file.size / 1024} KB",
-                                style = MaterialTheme.typography.labelMedium
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            // Thumbnail (safe: pass java.io.File to thumbnail component)
+                            FilePreviewThumbnail(file = File(file.path))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = file.name,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = "${file.size / 1024} KB",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+
+                            // Actions menu: delete/share/rename. FileActionsMenu must call onFileDeleted when deletion succeeded.
+                            FileActionsMenu(
+                                file = file,
+                                onFileDeleted = { deleted ->
+                                    // Keep UI consistent immediately
+                                    files.removeAll { it.path == deleted.path }
+                                    Toast.makeText(context, "Deleted ${deleted.name}", Toast.LENGTH_SHORT).show()
+                                    if (files.isEmpty()) onBack()
+                                },
+                                onGrantClick = { pathNeedingGrant ->
+                                    // Remember path and launch SAF picker so DeletionManager can succeed on retry
+                                    pendingSafPath = pathNeedingGrant
+                                    safLauncher.launch(null)
+                                }
                             )
                         }
-                        FileActionsMenu(file)
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Helper to find Activity from a Context (keeps parity with the rest of the project).
+ * If you already have a similar helper in your utils, you can remove this duplicate.
+ */
+private fun Context.findActivity(): android.app.Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is android.app.Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

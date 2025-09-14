@@ -1,6 +1,5 @@
 package com.arapps.fileviewplus.model
 
-import com.google.common.reflect.TypeToken
 import java.io.File
 
 data class FileNode(
@@ -65,4 +64,3 @@ data class FileNode(
         )
     }
 }
-val CategoryListType = object : TypeToken<List<FileNode.Category>>() {}.type

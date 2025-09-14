@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Android 12+ splash screen customization -->
+    <style name="Theme.Fileviewplus" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- System splash screen background color -->
+        <item name="android:windowSplashScreenBackground">#1976D2</item> <!-- your primary blue -->
+        <!-- The animated icon shown in the splash (your launcher icon) -->
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <!-- Optional branding image below the icon (set transparent to disable) -->
+        <item name="android:windowSplashScreenBrandingImage">@android:color/transparent</item>
+        <!-- Ensure content background matches after splash -->
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+
+</resources>

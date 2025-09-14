@@ -14,10 +14,10 @@ android {
 
     defaultConfig {
         applicationId = "com.arapps.fileviewplus"
-        minSdk = 24
+        minSdk = 29
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.1.5"
+        versionCode = 18
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -66,7 +66,6 @@ dependencies {
     implementation(libs.review.ktx)
     implementation(libs.firebase.coroutines)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.google.billing)
     implementation(libs.play.inappupdate)
     implementation(libs.zip4j)
     implementation(libs.gson)
@@ -98,6 +97,9 @@ dependencies {
     implementation(project(":ftpserver"))
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.transport.api)
+    implementation(libs.transport.api)
+    implementation(libs.androidx.room.common.jvm)
 
 
     // Unit Testing

@@ -28,7 +28,12 @@ data class NavigationState(
     fun goBack(): NavigationState {
         return when {
             viewerFile != null -> copy(viewerFile = null, viewerIsVault = false)
-            showFilteredList -> copy(showFilteredList = false, filteredFiles = emptyList(), filteredTitle = "", filterMode = FilterMode.NONE)
+            showFilteredList -> copy(
+                showFilteredList = false,
+                filteredFiles = emptyList(),
+                filteredTitle = "",
+                filterMode = FilterMode.NONE
+            )
             vaultFolder != null -> copy(vaultFolder = null)
             showVault -> copy(showVault = false)
             showFileTypeExplorer -> copy(showFileTypeExplorer = false)
@@ -36,7 +41,7 @@ data class NavigationState(
             month != null -> copy(month = null)
             year != null -> copy(year = null)
             category != null -> copy(category = null)
-            else -> NavigationState() // full reset
+            else -> NavigationState()
         }
     }
 }

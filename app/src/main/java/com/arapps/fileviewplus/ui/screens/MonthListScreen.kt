@@ -1,7 +1,10 @@
 package com.arapps.fileviewplus.ui.screens
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -15,18 +18,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil.compose.rememberAsyncImagePainter
 import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FolderActionsMenu
+import com.arapps.fileviewplus.utils.findActivity
 import com.arapps.fileviewplus.viewer.ViewerRouter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
+import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
+import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,15 +39,69 @@ fun MonthListScreen(
     onSelect: (FileNode.Month) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var showFlatFiles by rememberSaveable { mutableStateOf(false) }
+
+    // Mutable state so deletions trigger recomposition
+    val months = remember { mutableStateListOf<FileNode.Month>().apply { addAll(year.months) } }
+    val allMonthFiles = remember { mutableStateListOf<FileNode>().apply { addAll(year.months.flatMap { it.days.flatMap { d -> d.files } }) } }
+
+    // Helper to recompute flat list from months (call after months change)
+    fun rebuildFlatFilesFromMonths(mList: List<FileNode.Month>) {
+        val newFlat = mList.flatMap { m -> m.days.flatMap { d -> d.files } }
+        allMonthFiles.clear()
+        allMonthFiles.addAll(newFlat)
+    }
+
+    // Listen for delete broadcasts
+    DisposableEffect(Unit) {
+        val filter = IntentFilter(ACTION_FILE_DELETED)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val path = intent?.getStringExtra(EXTRA_DELETED_PATH) ?: return
+                Log.d("MonthListScreen", "Received delete broadcast for: $path")
+
+                // Remove from flat file list if present
+                val removed = allMonthFiles.firstOrNull { it.path == path }
+                if (removed != null) {
+                    allMonthFiles.remove(removed)
+                }
+
+                // Walk months -> days -> files and remove the file, dropping empty days and months
+                val updatedMonths = months.mapNotNull { month ->
+                    // For each day in month, remove the file and keep only non-empty days
+                    val updatedDays = month.days.mapNotNull { day ->
+                        val newFiles = day.files.filterNot { it.path == path }
+                        if (newFiles.isNotEmpty()) day.copy(files = newFiles) else null
+                    }
+                    // Keep month only if it still has days
+                    if (updatedDays.isNotEmpty()) month.copy(days = updatedDays) else null
+                }
+
+                // Apply new months -> this will trigger recomposition
+                months.clear()
+                months.addAll(updatedMonths)
+
+                // Rebuild flat list from updated months (keeps counts consistent)
+                rebuildFlatFilesFromMonths(updatedMonths)
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("📁 ${year.name}") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Text("⬅") }
-                },
+                navigationIcon = { IconButton(onClick = onBack) { Text("⬅") } },
                 actions = {
                     IconButton(onClick = { showFlatFiles = !showFlatFiles }) {
                         Icon(
@@ -55,9 +113,6 @@ fun MonthListScreen(
             )
         }
     ) { padding ->
-        val allMonthFiles = remember(year) {
-            year.months.flatMap { it.days.flatMap { day -> day.files } }
-        }
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -69,7 +124,7 @@ fun MonthListScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (!showFlatFiles) {
-                items(year.months.sortedByDescending { it.name }) { month ->
+                items(months.sortedByDescending { it.name }, key = { it.name }) { month ->
                     val allFiles = month.days.flatMap { it.files }
 
                     Card(
@@ -113,14 +168,15 @@ fun MonthListScreen(
                     }
                 }
             } else {
-                items(allMonthFiles) { file ->
-                    val context = LocalContext.current
+                items(allMonthFiles, key = { it.path }) { file ->
+                    val activity = context.findActivity()
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clickable {
-                                ViewerRouter.openFile(context, file, fromVault = false)
+                                ViewerRouter.openFile(activity ?: context, file, fromVault = false)
                             },
                         elevation = CardDefaults.cardElevation(3.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),

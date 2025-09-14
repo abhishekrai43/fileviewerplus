@@ -1,25 +1,26 @@
-// File: logic/FileScanner.kt
-
 package com.arapps.fileviewplus.logic
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Environment
-import com.arapps.fileviewplus.model.CategoryListType
 import com.arapps.fileviewplus.model.FileNode
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import com.google.gson.Gson
-
 
 object FileScanner {
 
     private val imageExt = listOf("jpg", "jpeg", "png", "gif", "webp")
-    private val videoExt = listOf("mp4", "mkv", "avi", "3gp")
+    private val videoExt = listOf("mp4", "mkv", "avi", "3gp", "mov")
     private val docExt = listOf("pdf", "doc", "docx", "txt", "xls", "ppt")
 
+    @SuppressLint("ConstantLocale")
     private val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
+    @SuppressLint("ConstantLocale")
     private val yearFormat = SimpleDateFormat("yyyy", Locale.getDefault())
+    @SuppressLint("ConstantLocale")
     private val dayFormat = SimpleDateFormat("dd-MMM-yyyy", Locale.getDefault())
 
     private val gson = Gson()
@@ -37,7 +38,8 @@ object FileScanner {
         val cacheFile = File(context.filesDir, CACHE_FILE)
         return if (cacheFile.exists()) {
             val json = cacheFile.readText()
-            gson.fromJson(json, CategoryListType)
+            val type = object : TypeToken<List<FileNode.Category>>() {}.type
+            gson.fromJson(json, type)
         } else emptyList()
     }
 
@@ -54,7 +56,10 @@ object FileScanner {
     }
 
     fun scanStorage(rootDir: File): List<FileNode.Category> {
-        val categorized = mutableMapOf<String, MutableMap<String, MutableMap<String, MutableMap<String, MutableList<FileNode>>>>>()
+        val categorized =
+            mutableMapOf<String, MutableMap<String, MutableMap<String, MutableMap<String, MutableList<FileNode>>>>>()
+
+
         rootDir.walkTopDown().forEach { file ->
             if (!file.isFile) return@forEach
             val ext = file.extension.lowercase(Locale.getDefault())
@@ -70,13 +75,7 @@ object FileScanner {
             val month = monthFormat.format(lastMod)
             val day = dayFormat.format(lastMod)
 
-            val fileNode = FileNode(
-                name = file.name,
-                path = file.absolutePath,
-                type = FileNode.FileType.fromExtension(ext),
-                size = file.length(),
-                lastModified = file.lastModified()
-            )
+            val fileNode = FileNode.fromFile(file)
 
             val yearMap = categorized.getOrPut(category) { mutableMapOf() }
             val monthMap = yearMap.getOrPut(year) { mutableMapOf() }
