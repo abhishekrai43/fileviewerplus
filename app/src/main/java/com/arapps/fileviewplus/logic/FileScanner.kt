@@ -15,6 +15,8 @@ object FileScanner {
     private val imageExt = listOf("jpg", "jpeg", "png", "gif", "webp")
     private val videoExt = listOf("mp4", "mkv", "avi", "3gp", "mov")
     private val docExt = listOf("pdf", "doc", "docx", "txt", "xls", "ppt")
+    // new: audio extensions including common mobile recorder formats
+    private val audioExt = listOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr")
 
     @SuppressLint("ConstantLocale")
     private val monthFormat = SimpleDateFormat("MMM", Locale.getDefault())
@@ -63,10 +65,21 @@ object FileScanner {
         rootDir.walkTopDown().forEach { file ->
             if (!file.isFile) return@forEach
             val ext = file.extension.lowercase(Locale.getDefault())
+
+            // Detect hidden recorder files specifically (.amr/.m4a often used by recorder apps)
+            val looksLikeHiddenRecorder = (ext in listOf("amr", "m4a")) && (
+                file.name.startsWith('.') ||
+                    file.parentFile?.name?.startsWith('.') == true ||
+                    file.name.lowercase(Locale.getDefault()).contains("record") ||
+                    file.name.lowercase(Locale.getDefault()).contains("rec")
+                )
+
             val category = when {
                 imageExt.contains(ext) -> "IMG"
                 videoExt.contains(ext) -> "VID"
                 docExt.contains(ext) -> "DOC"
+                looksLikeHiddenRecorder -> "HIDDEN_AUDIO"
+                audioExt.contains(ext) -> "AUDIO"
                 else -> return@forEach
             }
 

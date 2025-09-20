@@ -1,5 +1,6 @@
 package com.arapps.fileviewplus.ui.screens
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,26 +13,30 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import coil.compose.rememberAsyncImagePainter
-import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.viewer.ImageViewerActivity
 import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FolderActionsMenu
-import com.arapps.fileviewplus.utils.findActivity
-import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 
+@SuppressLint("NewApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonthListScreen(
@@ -45,6 +50,8 @@ fun MonthListScreen(
     // Mutable state so deletions trigger recomposition
     val months = remember { mutableStateListOf<FileNode.Month>().apply { addAll(year.months) } }
     val allMonthFiles = remember { mutableStateListOf<FileNode>().apply { addAll(year.months.flatMap { it.days.flatMap { d -> d.files } }) } }
+
+    // NOTE: launching ImageViewerActivity when a file is tapped (no inline gallery)
 
     // Helper to recompute flat list from months (call after months change)
     fun rebuildFlatFilesFromMonths(mList: List<FileNode.Month>) {
@@ -105,7 +112,7 @@ fun MonthListScreen(
                 actions = {
                     IconButton(onClick = { showFlatFiles = !showFlatFiles }) {
                         Icon(
-                            imageVector = if (showFlatFiles) Icons.Default.Folder else Icons.Default.List,
+                            imageVector = if (showFlatFiles) Icons.Filled.Folder else Icons.AutoMirrored.Filled.List,
                             contentDescription = "Toggle view"
                         )
                     }
@@ -169,35 +176,63 @@ fun MonthListScreen(
                 }
             } else {
                 items(allMonthFiles, key = { it.path }) { file ->
-                    val activity = context.findActivity()
-
-                    Card(
+                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clickable {
-                                ViewerRouter.openFile(activity ?: context, file, fromVault = false)
+                                // launch the full screen viewer
+                                ImageViewerActivity.launch(context, file)
                             },
                         elevation = CardDefaults.cardElevation(3.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = MaterialTheme.shapes.medium
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            FilePreviewThumbnail(file = File(file.path))
-                            Text(
-                                text = file.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 4.dp)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            FilePreviewThumbnail(
+                                file = File(file.path),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .clip(MaterialTheme.shapes.medium)
                             )
+
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.BottomStart
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f))
+                                            ),
+                                        )
+                                )
+
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = file.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "${file.size / 1024} KB",
+                                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+
         }
     }
 }

@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -30,12 +31,14 @@ import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.model.NavigationState
 import com.arapps.fileviewplus.ui.screens.*
 import com.arapps.fileviewplus.utils.findActivity
+import com.arapps.fileviewplus.viewer.AudioViewer
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+@RequiresApi(Build.VERSION_CODES.Q)
 @SuppressLint("RememberReturnType")
 @Composable
 fun FileViewApp(
@@ -140,9 +143,19 @@ fun FileViewApp(
             Toast.makeText(context, "File no longer exists: ${requested.name}", Toast.LENGTH_SHORT).show()
             nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
         } else {
-            val activity = context.findActivity()
-            ViewerRouter.openFile(activity ?: context, requested, nav.value.viewerIsVault)
-            nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
+            // If the requested file is an audio file, open the in-app AudioViewer instead of using ViewerRouter
+            if (requested.type == FileNode.FileType.Audio) {
+                // Render AudioViewer as an in-app overlay and keep nav until user closes it
+                AudioViewer(fileNode = requested, isVault = nav.value.viewerIsVault) {
+                    nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
+                }
+                // Don't proceed to other screens while viewer is showing
+                return
+            } else {
+                val activity = context.findActivity()
+                ViewerRouter.openFile(activity ?: context, requested, nav.value.viewerIsVault)
+                nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
+            }
         }
     }
 

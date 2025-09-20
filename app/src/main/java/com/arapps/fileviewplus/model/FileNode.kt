@@ -41,7 +41,7 @@ data class FileNode(
                 return when (ext.lowercase()) {
                     "jpg", "jpeg", "png", "webp", "bmp", "gif" -> Image
                     "mp4", "mkv", "3gp", "avi", "mov", "flv" -> Video
-                    "mp3", "wav", "aac", "ogg", "flac" -> Audio
+                    "mp3", "wav", "aac", "ogg", "flac", "m4a", "amr" -> Audio
                     "pdf" -> Pdf
                     "txt", "log", "md" -> Text
                     "apk" -> Apk

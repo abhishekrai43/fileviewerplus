@@ -1,6 +1,7 @@
 // File: app/src/main/java/com/arapps/fileviewplus/ui/screens/FileListScreen.kt
 package com.arapps.fileviewplus.ui.screens
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +28,7 @@ import com.arapps.fileviewplus.ui.components.FileActionsMenu
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
 import androidx.compose.ui.platform.LocalContext
-import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
 
 /**
  * FileListScreen
@@ -38,6 +40,7 @@ import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
  *  - Provides SAF picker retry support for deletions that require user-grant.
  *  - Notifies parent (onBack) when list becomes empty to allow aggregates to refresh.
  */
+@SuppressLint("NewApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
@@ -77,14 +80,29 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
     // Register broadcast receiver to keep this screen in sync with app-wide deletes.
     DisposableEffect(Unit) {
         val filter = IntentFilter(IntentActions.ACTION_FILE_DELETED)
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val path = intent?.getStringExtra(IntentActions.EXTRA_DELETED_PATH) ?: return
-                val removed = files.firstOrNull { it.path == path }
-                if (removed != null) {
-                    files.remove(removed)
-                    Toast.makeText(context, "Deleted ${removed.name}", Toast.LENGTH_SHORT).show()
-                    if (files.isEmpty()) onBack()
+                val normalizedDeleted = try {
+                    File(path).canonicalPath
+                } catch (_: Exception) {
+                    File(path).absolutePath
+                }
+                mainHandler.post {
+                    val removed = files.firstOrNull { node ->
+                        val nodePathNormalized = try {
+                            File(node.path).canonicalPath
+                        } catch (_: Exception) {
+                            File(node.path).absolutePath
+                        }
+                        nodePathNormalized == normalizedDeleted
+                    }
+                    if (removed != null) {
+                        files.remove(removed)
+                        Toast.makeText(context, "Deleted ${removed.name}", Toast.LENGTH_SHORT).show()
+                        if (files.isEmpty()) onBack()
+                    }
                 }
             }
         }
@@ -100,7 +118,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
             TopAppBar(
                 title = { Text(text = "Files: ${day.name}") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 }
             )
         }
@@ -165,8 +183,20 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                             FileActionsMenu(
                                 file = file,
                                 onFileDeleted = { deleted ->
-                                    // Keep UI consistent immediately
-                                    files.removeAll { it.path == deleted.path }
+                                    // Keep UI consistent immediately (normalize path)
+                                    val normalizedDeleted = try {
+                                        File(deleted.path).canonicalPath
+                                    } catch (_: Exception) {
+                                        File(deleted.path).absolutePath
+                                    }
+                                    files.removeAll { node ->
+                                        val nodePathNormalized = try {
+                                            File(node.path).canonicalPath
+                                        } catch (_: Exception) {
+                                            File(node.path).absolutePath
+                                        }
+                                        nodePathNormalized == normalizedDeleted
+                                    }
                                     Toast.makeText(context, "Deleted ${deleted.name}", Toast.LENGTH_SHORT).show()
                                     if (files.isEmpty()) onBack()
                                 },

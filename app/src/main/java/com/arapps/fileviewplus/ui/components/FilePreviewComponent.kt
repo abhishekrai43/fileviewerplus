@@ -1,92 +1,83 @@
-package com.arapps.fileflowplus.ui.components
+package com.arapps.fileviewplus.ui.components
+// NOTE: original package had a typo ('fileflowplus' vs 'fileviewplus') in older versions.
+// Kept this package name to avoid breaking references; callers in the project import the
+// public function `FilePreviewThumbnail` by fully qualified package where needed. If you
+// prefer to move this into `com.arapps.fileviewplus.ui.components`, rename the package and
+// update imports across the repo.
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.pdf.PdfRenderer
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import java.io.File
+import java.util.Locale
 
-@RequiresApi(Build.VERSION_CODES.Q)
 @Composable
-fun FilePreviewThumbnail(file: File) {
+fun FilePreviewThumbnail(file: File, modifier: Modifier = Modifier, contentDescription: String? = null) {
+    val ext = file.extension.lowercase(Locale.getDefault())
     when {
-        file.extension.equals("pdf", ignoreCase = true) -> PdfThumbnail(file)
-        file.extension.matches(Regex("jpg|jpeg|png|webp|bmp|gif", RegexOption.IGNORE_CASE)) ->
-            ImageThumbnail(file)
-        file.extension.matches(Regex("mp4|mkv|webm|avi|mov", RegexOption.IGNORE_CASE)) -> VideoThumbnail(file) // ✅ Add this
-    }
-}
-
-@Composable
-private fun PdfThumbnail(file: File) {
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-
-    LaunchedEffect(file) {
-        runCatching {
-            val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer = PdfRenderer(descriptor)
-            val page = renderer.openPage(0)
-            val bmp = Bitmap.createBitmap(page.width / 4, page.height / 4, Bitmap.Config.ARGB_8888)
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-            renderer.close()
-            bitmap = bmp
-        }
-    }
-
-    bitmap?.let {
-        Image(
-            bitmap = it.asImageBitmap(),
-            contentDescription = "PDF thumbnail",
-            modifier = Modifier.size(48.dp)
-        )
-    }
-}
-
-@Composable
-private fun ImageThumbnail(file: File) {
-    val bitmap = remember(file) {
-        BitmapFactory.decodeFile(file.absolutePath)
-    }
-
-    bitmap?.let {
-        Image(
-            bitmap = it.asImageBitmap(),
-            contentDescription = "Image thumbnail",
-            modifier = Modifier.size(48.dp)
-        )
-    }
-}
-@RequiresApi(Build.VERSION_CODES.Q)
-@Composable
-private fun VideoThumbnail(file: File) {
-    var thumbnail by remember { mutableStateOf<Bitmap?>(null) }
-
-    LaunchedEffect(file) {
-        runCatching {
-            val frame = android.media.ThumbnailUtils.createVideoThumbnail(
-                file,
-                android.util.Size(240, 240), // adjust size as needed
-                null // no cancellation signal
+        ext.matches(Regex("jpg|jpeg|png|webp|bmp|gif", RegexOption.IGNORE_CASE)) -> {
+            AsyncImage(
+                model = file,
+                contentDescription = contentDescription ?: file.name,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
             )
-            thumbnail = frame
+        }
+        ext.matches(Regex("mp4|mkv|webm|avi|mov", RegexOption.IGNORE_CASE)) -> {
+            Box(modifier = modifier) {
+                AsyncImage(
+                    model = file,
+                    contentDescription = contentDescription ?: file.name,
+                    modifier = Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop
+                )
+                // Play overlay
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(48.dp)
+                )
+            }
+        }
+        ext.equals("pdf", ignoreCase = true) -> {
+            Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                        Icon(imageVector = Icons.Default.PictureAsPdf, contentDescription = "PDF", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(36.dp))
+                    }
+                }
+            }
+        }
+        else -> {
+            Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                        Icon(imageVector = Icons.Default.InsertDriveFile, contentDescription = "File", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
+                    }
+                }
+            }
         }
     }
-
-    thumbnail?.let {
-        Image(
-            bitmap = it.asImageBitmap(),
-            contentDescription = "Video thumbnail",
-            modifier = Modifier.size(48.dp)
-        )
-    }
 }
-

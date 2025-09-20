@@ -96,9 +96,16 @@ fun FileTypeExplorerScreen(
     // Local display list (mutable state). We initialize from canonicalFiles; this lets us remove rows
     // instantly on delete broadcast even if top-level model is lagging for any reason.
     val displayFiles = remember { mutableStateListOf<FileNode>() }
-    LaunchedEffect(canonicalFiles) {
+    // Ensure displayFiles is always in sync with canonicalFiles, including on first composition.
+    LaunchedEffect(categories) {
         displayFiles.clear()
-        displayFiles.addAll(canonicalFiles)
+        displayFiles.addAll(
+            categories
+                .flatMap { it.years }
+                .flatMap { it.months }
+                .flatMap { it.days }
+                .flatMap { it.files }
+        )
     }
 
     // Listen for deletion broadcasts so we can remove rows immediately.
@@ -122,7 +129,7 @@ fun FileTypeExplorerScreen(
     }
 
     // --- Filtering / grouping state ---
-    var selectedType by remember { mutableStateOf<FileCategory?>(null) }
+    var selectedType by remember { mutableStateOf<FileCategory?>(null) } // null = show all
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredGrouped = remember(displayFiles, selectedType, searchQuery) {
@@ -356,5 +363,3 @@ private fun getMimeType(fileName: String): String {
     return MimeTypeMap.getSingleton()
         .getMimeTypeFromExtension(extension) ?: "application/octet-stream"
 }
-
-

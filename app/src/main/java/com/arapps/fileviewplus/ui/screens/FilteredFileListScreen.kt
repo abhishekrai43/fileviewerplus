@@ -1,19 +1,18 @@
 // File: app/src/main/java/com/arapps/fileviewplus/ui/screens/FilteredFileListScreen.kt
 package com.arapps.fileviewplus.ui.screens
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.MediaScannerConnection
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +22,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.arapps.fileflowplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
 import com.arapps.fileviewplus.intent.IntentActions
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
@@ -57,8 +57,8 @@ import java.io.File
  *  - Broadcast IntentActions.ACTION_FILE_DELETED is used app-wide to notify lists/aggregates.
  */
 
-@RequiresApi(Build.VERSION_CODES.Q)
 @OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("NewApi")
 @Composable
 fun FilteredFileListScreen(
     files: List<File>,
@@ -248,7 +248,7 @@ fun FilteredFileListScreen(
                                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                         DropdownMenuItem(
                                             text = { Text("Open") },
-                                            leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null) },
+                                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
                                             onClick = {
                                                 menuExpanded = false
                                                 if (!existsAtPath(context, file.path)) {

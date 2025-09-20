@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Fileviewplus" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Fileviewplus" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Make window background transparent so Compose's background shows through (prevents white flash) -->
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
 
 </resources>

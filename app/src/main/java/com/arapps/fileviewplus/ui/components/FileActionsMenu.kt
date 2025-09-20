@@ -4,48 +4,56 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.arapps.fileviewplus.intent.IntentActions
+import androidx.compose.ui.unit.dp
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETE_MANUAL_REMIND
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
-import com.arapps.fileviewplus.utils.ZipUtils
 import com.arapps.fileviewplus.utils.findActivity
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
-/**
- * FileActionsMenu (production-grade)
- *
- * - onFileDeleted is invoked only when deletion succeeded.
- * - onGrantClick(path) is called when the component requests the parent to open SAF tree for the given path.
- *   Parent should launch the tree picker (with optional initial Uri) and persist permission.
- * - If SAF prevents deletion and cannot be resolved, we show a clear message and broadcast EXTRA_DELETE_MANUAL_REMIND=true
- *
- * Use this component in file list rows. Keep parent state update (onFileDeleted) to remove items locally.
- */
+// (using string tokens for pendingAction to keep code robust and avoid type-resolution issues)
+private const val ACTION_COPY = "COPY"
+private const val ACTION_MOVE = "MOVE"
+private const val ACTION_EXPORT = "EXPORT"
+private const val ACTION_ZIP = "ZIP"
+private const val ACTION_DELETE = "DELETE"
+
+// FileActionsMenu: file-level actions with graceful SAF handling and retry flows
 @Composable
 fun FileActionsMenu(
     file: FileNode?,
@@ -61,52 +69,95 @@ fun FileActionsMenu(
 ) {
     if (file == null) return
 
+    // reference onGrantClick so linter doesn't warn; parent may still use it in other flows
+    onGrantClick?.let { /* no-op: kept for API compatibility */ }
+
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showInvalidFolderDialog by remember { mutableStateOf(false) }
+    var lastInvalidUri by remember { mutableStateOf<Uri?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
-    // SAF launcher to request access to a tree (fallback if parent didn't handle onGrantClick)
+    // small progress UI state
+    var showOpProgress by remember { mutableStateOf(false) }
+    var opLabel by remember { mutableStateOf("") }
+
+    // Pending action state used when we need the user to pick a destination folder (string token)
+    var pendingAction by remember { mutableStateOf<String?>(null) }
+    var pendingFile by remember { mutableStateOf<FileNode?>(null) }
+
+    // General-purpose SAF tree picker. After the user selects a folder we attempt the pending action.
     val pickTreeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri == null) {
-            Toast.makeText(context, "Permission not granted. Cannot delete ${file.name}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Permission not granted. Cannot proceed.", Toast.LENGTH_LONG).show()
+            pendingAction = null; pendingFile = null
             return@rememberLauncherForActivityResult
         }
 
-        // Persist permission if possible
-        try {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-        } catch (_: Throwable) {
-            // ignore vendor quirks
-        }
-
-        // After permission is granted, attempt deletion again automatically
         coroutineScope.launch {
-            val res = attemptDeleteWithFallbacks(context, file)
-            when (res) {
-                is DeletionResult.Deleted -> {
-                    withContext(Dispatchers.Main) {
-                        // Notify parent and broadcast
-                        onFileDeleted(file)
-                        sendDeletedBroadcast(context, file.path)
-                        Toast.makeText(context, "Deleted ${file.name}", Toast.LENGTH_SHORT).show()
-                    }
+            val isUsable = withContext(Dispatchers.IO) { isWritableAndNotRestricted(context, uri) }
+            if (!isUsable) {
+                lastInvalidUri = uri
+                showInvalidFolderDialog = true
+                return@launch
+            }
+
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Throwable) {}
+
+            // Execute pending action
+            val pf = pendingFile
+            val action = pendingAction
+            pendingAction = null
+            pendingFile = null
+            if (pf == null || action == null) return@launch
+
+            // show progress
+            withContext(Dispatchers.Main) {
+                showOpProgress = true
+                opLabel = when (action) {
+                    ACTION_COPY -> "Copying..."
+                    ACTION_MOVE -> "Moving..."
+                    ACTION_EXPORT -> "Exporting..."
+                    ACTION_ZIP -> "Creating zip..."
+                    ACTION_DELETE -> "Deleting..."
+                    else -> "Working..."
                 }
-                is DeletionResult.NeedUserGrant -> {
-                    // Still needs grant - inform user
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
-                    }
+            }
+
+            val res = try {
+                when (action) {
+                    ACTION_COPY -> performCopyToUri(context, pf, uri)
+                    ACTION_MOVE -> performMoveToUri(context, pf, uri)
+                    ACTION_EXPORT -> performExportToUri(context, pf, uri)
+                    ACTION_ZIP -> performZipToUri(context, pf, uri)
+                    ACTION_DELETE -> attemptDeleteWithFallbacks(context, pf)
+                    else -> DeletionResult.Failed("No action")
                 }
-                is DeletionResult.Failed -> {
-                    // Could not delete even after grant - it's likely a manual-delete case
-                    withContext(Dispatchers.Main) {
-                        // In this case we inform parent (via broadcast) that manual delete is required.
-                        notifyManualDeleteRequired(context, file.path)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    showOpProgress = false
+                    opLabel = ""
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                val actionLabel = action.lowercase().replaceFirstChar { ch: Char -> ch.uppercaseChar() }
+                when (res) {
+                    is DeletionResult.Deleted -> {
+                        Toast.makeText(context, "$actionLabel succeeded", Toast.LENGTH_SHORT).show()
+                        if (action == ACTION_MOVE || action == ACTION_DELETE) {
+                            try { onFileDeleted(pf) } catch (_: Exception) {}
+                            try { sendDeletedBroadcast(context, pf.path) } catch (_: Exception) {}
+                        }
                     }
+                    is DeletionResult.Failed -> Toast.makeText(context, "$actionLabel failed: ${res.reason}", Toast.LENGTH_LONG).show()
+                    is DeletionResult.NeedUserGrant -> Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -133,9 +184,19 @@ fun FileActionsMenu(
                     expanded = false
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val success = ZipUtils.shareSingleFile(context, file)
-                            if (!success) {
-                                withContext(Dispatchers.Main) { Toast.makeText(context, "Sharing failed", Toast.LENGTH_SHORT).show() }
+                            val f = File(file.path)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                context.packageName + ".provider",
+                                f
+                            )
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "*/*"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            withContext(Dispatchers.Main) {
+                                context.startActivity(Intent.createChooser(shareIntent, "Share file via"))
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
@@ -145,23 +206,42 @@ fun FileActionsMenu(
             )
 
             DropdownMenuItem(
-                text = { Text("Zip & Share") },
+                text = { Text("Copy") },
                 onClick = {
                     expanded = false
-                    coroutineScope.launch(Dispatchers.IO) {
-                        try {
-                            val zipFile = ZipUtils.createZip(context, file.name.substringBeforeLast('.'), listOf(file))
-                            withContext(Dispatchers.Main) {
-                                if (zipFile != null) {
-                                    ZipUtils.shareZip(context, zipFile)
-                                } else {
-                                    Toast.makeText(context, "Failed to create ZIP", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) { Toast.makeText(context, "Zipping failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
-                        }
-                    }
+                    pendingAction = ACTION_COPY
+                    pendingFile = file
+                    pickTreeLauncher.launch(null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Move") },
+                onClick = {
+                    expanded = false
+                    pendingAction = ACTION_MOVE
+                    pendingFile = file
+                    pickTreeLauncher.launch(null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Export") },
+                onClick = {
+                    expanded = false
+                    pendingAction = ACTION_EXPORT
+                    pendingFile = file
+                    pickTreeLauncher.launch(null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text("Zip") },
+                onClick = {
+                    expanded = false
+                    pendingAction = ACTION_ZIP
+                    pendingFile = file
+                    pickTreeLauncher.launch(null)
                 }
             )
 
@@ -196,24 +276,13 @@ fun FileActionsMenu(
                                 }
                             }
                             is DeletionResult.NeedUserGrant -> {
-                                // Ask the parent to request SAF (preferred) else open picker ourselves.
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
-                                }
-                                // If parent provided a handler, ask it to request access. Pass a suggested initialUri if available.
-                                if (onGrantClick != null) {
-                                    onGrantClick(res.suggestedUriToOpen?.toString())
-                                } else {
-                                    // fallback: open picker ourselves
-                                    try {
-                                        pickTreeLauncher.launch(res.suggestedUriToOpen)
-                                    } catch (_: Throwable) {
-                                        pickTreeLauncher.launch(null)
-                                    }
-                                }
-                            }
+                                withContext(Dispatchers.Main) { Toast.makeText(context, res.message, Toast.LENGTH_LONG).show() }
+                                // Ask user to pick a folder for deletion retry
+                                pendingAction = ACTION_DELETE
+                                 pendingFile = file
+                                 pickTreeLauncher.launch(res.suggestedUriToOpen)
+                             }
                             is DeletionResult.Failed -> {
-                                // Deletion failed — likely because SAF can't help; ask user to manually delete and broadcast the hint.
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(context, "Could not delete: ${res.reason}. You may need to delete it from the original location.", Toast.LENGTH_LONG).show()
                                     notifyManualDeleteRequired(context, file.path)
@@ -228,8 +297,46 @@ fun FileActionsMenu(
             }
         )
     }
+
+    // Show dialog if user picks an invalid folder
+    if (showInvalidFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showInvalidFolderDialog = false },
+            title = { Text("Folder Not Usable", style = MaterialTheme.typography.titleLarge) },
+            text = {
+                Text(
+                    "The folder you selected cannot be used for this operation. This is a limitation imposed by Android for security reasons, not an app issue. Please choose a different folder (not a system or restricted folder).",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showInvalidFolderDialog = false
+                    pickTreeLauncher.launch(null)
+                }) { Text("Choose Different Folder", style = MaterialTheme.typography.labelLarge) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showInvalidFolderDialog = false }) { Text("Cancel", style = MaterialTheme.typography.labelLarge) }
+            },
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp
+        )
+    }
+
+    // Progress modal
+    if (showOpProgress) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(opLabel) },
+            text = { androidx.compose.material3.CircularProgressIndicator() },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
 }
 
+// --- Unified SAF permission/request logic ---
 /** Helper: send broadcast to inform other screens that a file was deleted */
 private fun sendDeletedBroadcast(context: Context, path: String) {
     val b = Intent(ACTION_FILE_DELETED).apply {
@@ -255,7 +362,7 @@ private fun notifyManualDeleteRequired(context: Context, path: String) {
     }
 }
 
-/** Local sealed result for this file */
+/** Local sealed result for this file (file-private) */
 private sealed class DeletionResult {
     object Deleted : DeletionResult()
     data class NeedUserGrant(val suggestedUriToOpen: Uri?, val message: String) : DeletionResult()
@@ -272,32 +379,37 @@ private sealed class DeletionResult {
  */
 private suspend fun attemptDeleteWithFallbacks(context: Context, file: FileNode): DeletionResult =
     withContext(Dispatchers.IO) {
+        var result: DeletionResult = DeletionResult.Failed("Unknown error while deleting")
         try {
             // MediaStore first for user-visible media
             if (isLikelyMediaFile(file.path)) {
                 val mediaDeleted = try { attemptMediaStoreDelete(context, file.path) } catch (_: Throwable) { false }
-                if (mediaDeleted) return@withContext DeletionResult.Deleted
+                if (mediaDeleted) {
+                    result = DeletionResult.Deleted
+                }
             }
 
-            // Direct file delete
-            val f = File(file.path)
-            if (f.exists()) {
-                val directOk = try { f.delete() } catch (_: Throwable) { false }
-                if (directOk) return@withContext DeletionResult.Deleted
+            // Direct file delete (only if not already deleted by MediaStore)
+            if (result !is DeletionResult.Deleted) {
+                val f = File(file.path)
+                if (f.exists()) {
+                    val directOk = try { f.delete() } catch (_: Throwable) { false }
+                    if (directOk) result = DeletionResult.Deleted
+                }
             }
 
-            // SAF / persisted tree URIs via DeletionManager
-            when (val dm = DeletionManager.deleteFile(context, file)) {
-                is DeletionManager.DeleteResult.Deleted -> return@withContext DeletionResult.Deleted
-                is DeletionManager.DeleteResult.NeedUserGrant ->
-                    return@withContext DeletionResult.NeedUserGrant(dm.suggestedUriToOpen, dm.message)
-                is DeletionManager.DeleteResult.Failed ->
-                    return@withContext DeletionResult.Failed(dm.reason)
+            // SAF / persisted tree URIs via DeletionManager (only if still not deleted)
+            if (result !is DeletionResult.Deleted) {
+                when (val dm = DeletionManager.deleteFile(context, file)) {
+                    is DeletionManager.DeleteResult.Deleted -> result = DeletionResult.Deleted
+                    is DeletionManager.DeleteResult.NeedUserGrant -> result = DeletionResult.NeedUserGrant(dm.suggestedUriToOpen, dm.message)
+                    is DeletionManager.DeleteResult.Failed -> result = DeletionResult.Failed(dm.reason)
+                }
             }
         } catch (ex: Exception) {
-            return@withContext DeletionResult.Failed(ex.localizedMessage ?: ex.toString())
+            result = DeletionResult.Failed(ex.localizedMessage ?: ex.toString())
         }
-        return@withContext DeletionResult.Failed("Unknown error while deleting")
+        return@withContext result
     }
 
 /** Conservative extension-based media detector */
@@ -335,7 +447,8 @@ private fun attemptMediaStoreDelete(context: Context, absolutePath: String): Boo
  */
 private fun queryAndDeleteFromStore(cr: android.content.ContentResolver, collection: Uri, absolutePath: String): Boolean {
     var cursor: android.database.Cursor? = null
-    return try {
+    var result: Boolean
+    try {
         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATA)
         val sel = "${MediaStore.MediaColumns.DATA} = ?"
         cursor = cr.query(collection, projection, sel, arrayOf(absolutePath), null)
@@ -345,15 +458,173 @@ private fun queryAndDeleteFromStore(cr: android.content.ContentResolver, collect
             val uri = ContentUris.withAppendedId(collection, id)
             try {
                 val rows = cr.delete(uri, null, null)
-                return rows > 0
+                result = rows > 0
             } catch (se: SecurityException) {
-                return false
+                result = false
             }
+        } else {
+            result = false
         }
-        false
     } catch (_: Exception) {
-        false
+        result = false
     } finally {
         try { cursor?.close() } catch (_: Exception) {}
+    }
+    return result
+}
+
+// Implement copy/move/export/zip helpers
+private suspend fun performCopyToUri(context: Context, file: FileNode, treeUri: Uri): DeletionResult =
+    withContext(Dispatchers.IO) {
+        try {
+            val f = File(file.path)
+            if (!f.exists()) return@withContext DeletionResult.Failed("Source file not found")
+            val extension = f.extension
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+            val targetName = generateUniqueName(context, treeUri, f.name)
+            val created = DocumentsContract.createDocument(context.contentResolver, treeUri, mime, targetName)
+                ?: return@withContext DeletionResult.Failed("Failed to create destination file")
+            context.contentResolver.openOutputStream(created).use { out ->
+                FileInputStream(f).use { input ->
+                    val buffer = ByteArray(8 * 1024)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } > 0) {
+                        out?.write(buffer, 0, read)
+                    }
+                    out?.flush()
+                }
+            }
+            return@withContext DeletionResult.Deleted
+        } catch (ex: Exception) {
+            return@withContext DeletionResult.Failed(ex.localizedMessage ?: ex.toString())
+        }
+    }
+
+private suspend fun performMoveToUri(context: Context, file: FileNode, treeUri: Uri): DeletionResult =
+    withContext(Dispatchers.IO) {
+        val copyRes = performCopyToUri(context, file, treeUri)
+        if (copyRes !is DeletionResult.Deleted) return@withContext copyRes
+        // After copy, attempt delete original
+        val delRes = attemptDeleteWithFallbacks(context, file)
+        return@withContext when (delRes) {
+            is DeletionResult.Deleted -> DeletionResult.Deleted
+            is DeletionResult.NeedUserGrant -> DeletionResult.NeedUserGrant(delRes.suggestedUriToOpen, delRes.message)
+            is DeletionResult.Failed -> DeletionResult.Failed("Moved but failed to delete original: ${delRes.reason}")
+        }
+    }
+
+private suspend fun performExportToUri(context: Context, file: FileNode, treeUri: Uri): DeletionResult =
+    withContext(Dispatchers.IO) {
+        // Export treated as copy to target folder (explicit SAF destination chosen by user)
+        performCopyToUri(context, file, treeUri)
+    }
+
+private suspend fun performZipToUri(context: Context, file: FileNode, treeUri: Uri): DeletionResult =
+    withContext(Dispatchers.IO) {
+        try {
+            val f = File(file.path)
+            if (!f.exists()) return@withContext DeletionResult.Failed("Source file not found")
+            // create temp zip in cache
+            val zipName = "${f.nameWithoutExtension}.zip"
+            val uniqueZipName = generateUniqueName(context, treeUri, zipName)
+            val tempZip = File(context.cacheDir, zipName)
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(tempZip))).use { zos ->
+                val entry = ZipEntry(f.name)
+                zos.putNextEntry(entry)
+                BufferedInputStream(FileInputStream(f)).use { input ->
+                    val buffer = ByteArray(8 * 1024)
+                    var count: Int
+                    while (input.read(buffer).also { count = it } != -1) {
+                        zos.write(buffer, 0, count)
+                    }
+                }
+                zos.closeEntry()
+                zos.finish()
+            }
+            // write temp zip to chosen SAF folder
+            val mime = "application/zip"
+            val created = DocumentsContract.createDocument(context.contentResolver, treeUri, mime, uniqueZipName)
+                ?: return@withContext DeletionResult.Failed("Failed to create zip in destination")
+            context.contentResolver.openOutputStream(created).use { out ->
+                FileInputStream(tempZip).use { input ->
+                    val buffer = ByteArray(8 * 1024)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } > 0) {
+                        out?.write(buffer, 0, read)
+                    }
+                    out?.flush()
+                }
+            }
+            // cleanup
+            try { tempZip.delete() } catch (_: Throwable) {}
+            return@withContext DeletionResult.Deleted
+        } catch (ex: Exception) {
+            return@withContext DeletionResult.Failed(ex.localizedMessage ?: ex.toString())
+        }
+    }
+
+// helper: find child document by display name under a tree and return document Uri if found
+private fun findChildDocumentUri(context: Context, treeUri: Uri, name: String): Uri? {
+    return try {
+        val docId = DocumentsContract.getTreeDocumentId(treeUri)
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+        var cursor: android.database.Cursor? = null
+        try {
+            cursor = context.contentResolver.query(childrenUri, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)
+            while (cursor != null && cursor.moveToNext()) {
+                val id = cursor.getString(0)
+                val display = cursor.getString(1)
+                if (display == name) {
+                    return DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
+                }
+            }
+        } finally {
+            try { cursor?.close() } catch (_: Exception) {}
+        }
+        null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+// helper: generate a unique name by appending (1), (2), ... if a file with same name exists
+private fun generateUniqueName(context: Context, treeUri: Uri, name: String): String {
+    if (findChildDocumentUri(context, treeUri, name) == null) return name
+    val dot = name.lastIndexOf('.')
+    val base = if (dot > 0) name.substring(0, dot) else name
+    val ext = if (dot > 0) name.substring(dot) else ""
+    var i = 1
+    while (i < 1000) {
+        val candidate = "$base ($i)$ext"
+        if (findChildDocumentUri(context, treeUri, candidate) == null) return candidate
+        i++
+    }
+    return "${base}_${System.currentTimeMillis()}$ext"
+}
+
+// add this helper to check if a SAF Uri is writable and not a restricted/system folder
+private fun isWritableAndNotRestricted(context: Context, uri: Uri): Boolean {
+    // Try to create a temp file in the folder
+    return try {
+        val docId = android.provider.DocumentsContract.getTreeDocumentId(uri)
+        val isRestricted = docId.startsWith("primary:Android/data") ||
+                docId.startsWith("primary:Android/obb") ||
+                docId.equals("primary:", ignoreCase = true) ||
+                docId.equals("primary:Download", ignoreCase = true) ||
+                docId.equals("downloads", ignoreCase = true)
+        if (isRestricted) return false
+        val testFileName = "__saf_test_${System.currentTimeMillis()}"
+        val testFileUri = android.provider.DocumentsContract.createDocument(
+            context.contentResolver, uri, "text/plain", testFileName
+        )
+        if (testFileUri != null) {
+            // Clean up
+            context.contentResolver.delete(testFileUri, null, null)
+            true
+        } else {
+            false
+        }
+    } catch (_: Exception) {
+        false
     }
 }
