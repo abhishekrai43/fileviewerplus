@@ -2,31 +2,57 @@
 package com.arapps.fileviewplus.receiver
 
 import RepeatType
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
-import com.arapps.fileviewplus.service.ReminderForegroundService
+import android.os.Build
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.arapps.fileviewplus.MainActivity
+import com.arapps.fileviewplus.R
 import com.arapps.fileviewplus.utils.ReminderScheduler
+import kotlin.math.abs
 
 class NoteReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val noteId = intent.getStringExtra("note_id") ?: return
+        val noteId = intent?.getStringExtra("note_id") ?: return
         val noteContent = intent.getStringExtra("note_content") ?: return
         val repeatStr = intent.getStringExtra("repeat") ?: RepeatType.NEVER.name
 
-        val serviceIntent = Intent(context, ReminderForegroundService::class.java).apply {
-            putExtra("note_id", noteId)
-            putExtra("note_content", noteContent)
+        Log.d("NoteReminderReceiver", "Received alarm for noteId=$noteId content=$noteContent repeat=$repeatStr")
+
+        // Post notification directly from the BroadcastReceiver (avoids starting a foreground service)
+        val channelId = "note_reminder_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Note Reminders", NotificationManager.IMPORTANCE_HIGH)
+            val mgr = context.getSystemService(NotificationManager::class.java)
+            mgr.createNotificationChannel(channel)
         }
 
-        // Use ContextCompat to start foreground service in a backwards-compatible way
-        try {
-            ContextCompat.startForegroundService(context, serviceIntent)
-        } catch (e: Exception) {
-            // Fallback: if service can't be started, you may want to handle notification directly here
-            e.printStackTrace()
+        val notificationIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("navigate_to", "vault")
         }
+
+        val requestCode = abs(noteId.hashCode())
+        val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val pendingIntent = PendingIntent.getActivity(context, requestCode, notificationIntent, pendingIntentFlags)
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification_reminder_mdpi)
+            .setContentTitle("Vault Reminder")
+            .setContentText(noteContent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        val mgr = context.getSystemService(NotificationManager::class.java)
+        mgr?.notify(requestCode, notification)
+        Log.d("NoteReminderReceiver", "Posted notification for noteId=$noteId from BroadcastReceiver (requestCode=$requestCode)")
 
         // Reschedule if repeating
         val repeat = try {
@@ -51,6 +77,7 @@ class NoteReminderReceiver : BroadcastReceiver() {
                     triggerAtMillis = nextTrigger,
                     repeat = repeat
                 )
+                Log.d("NoteReminderReceiver", "Rescheduled repeating reminder for noteId=$noteId next=$nextTrigger")
             }
         }
     }

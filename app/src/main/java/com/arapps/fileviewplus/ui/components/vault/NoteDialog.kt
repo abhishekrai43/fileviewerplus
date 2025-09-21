@@ -44,6 +44,9 @@ fun NoteDialog(
     val context = LocalContext.current
     val calendar = remember { Calendar.getInstance() }
 
+    // Generate a stable noteId for new notes so scheduled alarms use the same id as the saved note
+    val noteId = remember { initialNote?.id ?: UUID.randomUUID().toString() }
+
     var content by remember { mutableStateOf(initialNote?.content ?: "") }
     var isPassword by remember { mutableStateOf(initialNote?.isPassword ?: false) }
     var showPassword by remember { mutableStateOf(false) }
@@ -57,7 +60,6 @@ fun NoteDialog(
         confirmButton = {
             Button(onClick = {
                 if (content.isNotBlank()) {
-                    val noteId = initialNote?.id ?: UUID.randomUUID().toString()
                     val updated = initialNote?.copy(
                         content = content,
                         isPassword = isPassword,
@@ -71,6 +73,7 @@ fun NoteDialog(
                         color = selectedColor
                     )
 
+                    // Ensure if a reminder is set we schedule it using the stable noteId
                     reminderAt?.let {
                         ReminderScheduler.scheduleReminder(context, noteId, content, it, repeat)
                     }
@@ -178,13 +181,9 @@ fun NoteDialog(
                                         set(year, month, day, hour, minute)
                                     }.timeInMillis
                                     reminderAt = millis
-                                    ReminderScheduler.scheduleReminder(
-                                        context,
-                                        initialNote?.id ?: UUID.randomUUID().toString(),
-                                        content,
-                                        millis,
-                                        repeat
-                                    )
+                                    // Schedule immediately so reminders fire even if user doesn't press Save
+                                    ReminderScheduler.scheduleReminder(context, noteId, content, millis, repeat)
+                                    Toast.makeText(context, "Reminder scheduled for ${Date(millis)}", Toast.LENGTH_SHORT).show()
                                 },
                                 calendar.get(Calendar.HOUR_OF_DAY),
                                 calendar.get(Calendar.MINUTE),

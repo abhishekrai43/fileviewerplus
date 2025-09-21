@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -20,6 +21,8 @@ class NoteReminderWorker(
     override fun doWork(): Result {
         val noteId = inputData.getString("note_id") ?: return Result.failure()
         val noteContent = inputData.getString("note_content") ?: "Reminder"
+
+        Log.d("NoteReminderWorker", "doWork invoked for noteId=$noteId content=$noteContent")
 
         val channelId = "note_reminder_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -53,6 +56,8 @@ class NoteReminderWorker(
 
         context.getSystemService(NotificationManager::class.java)
             ?.notify(noteId.hashCode(), notification)
+
+        Log.d("NoteReminderWorker", "Posted notification for noteId=$noteId via WorkManager path")
 
         return Result.success()
     }

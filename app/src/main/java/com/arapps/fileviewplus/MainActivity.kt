@@ -1,6 +1,7 @@
 // File: app/src/main/java/com/arapps/fileviewplus/MainActivity.kt
 package com.arapps.fileviewplus
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -28,6 +29,12 @@ import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import kotlinx.coroutines.launch
+import android.app.AlarmManager
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.util.Log
+import androidx.work.WorkManager
+import com.arapps.fileviewplus.data.NoteStore
 
 private const val UPDATE_REQUEST_CODE = 1001
 
@@ -35,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     private var permissionPreviouslyDenied = false
 
+    @SuppressLint("NewApi")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -42,6 +50,12 @@ class MainActivity : ComponentActivity() {
         FirebaseTokenLogger.logToken()
         checkAndRequestStoragePermission()
         checkForAppUpdate()
+
+        // Diagnostic: check scheduled reminders and schedule a short test alarm in debug builds
+        debugReminderState()
+
+        // Check reminder-related permissions/settings (notifications and exact alarms)
+        checkReminderPermissionsAndSettings()
 
         // edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -96,6 +110,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun debugReminderState() {
+        try {
+            val notes = NoteStore.getAllNotes(this)
+            val alarmManager = getSystemService(AlarmManager::class.java)
+            val wm = WorkManager.getInstance(applicationContext)
+
+            for (note in notes) {
+                val id = note.id
+                val hasReminder = note.reminderAt != null
+                val pendingIntent = try {
+                    PendingIntent.getBroadcast(this, kotlin.math.abs(id.hashCode()), Intent(this, Class.forName("com.arapps.fileviewplus.receiver.NoteReminderReceiver")),
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+                } catch (e: Exception) {
+                    null
+                }
+
+                Log.d("ReminderDebug", "Note id=$id reminderAt=${note.reminderAt} hasReminder=$hasReminder pendingIntentExists=${pendingIntent != null}")
+
+                try {
+                    val future = wm.getWorkInfosForUniqueWork("note_reminder_$id")
+                    val infos = future.get()
+                    Log.d("ReminderDebug", "WorkManager infos for note_reminder_$id size=${infos.size}")
+                } catch (e: Exception) {
+                    Log.w("ReminderDebug", "Failed to query WorkManager for note_reminder_$id", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ReminderDebug", "debugReminderState failed", e)
+        }
+
+        // NOTE: Removed automatic debug scheduling of a test reminder.
+        // The function now only logs current reminder/work state and does not schedule anything.
+    }
+
     override fun onResume() {
         super.onResume()
 
@@ -146,6 +194,42 @@ class MainActivity : ComponentActivity() {
             }
         }.addOnFailureListener {
             it.printStackTrace()
+        }
+    }
+
+    private fun checkReminderPermissionsAndSettings() {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            val notificationsEnabled = nm?.areNotificationsEnabled() ?: true
+            Log.d("ReminderDebug", "Notifications enabled: $notificationsEnabled")
+
+            if (!notificationsEnabled) {
+                // Open app notification settings so user can enable notifications
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val alarmManager = getSystemService(AlarmManager::class.java)
+                val canExact = try { alarmManager?.canScheduleExactAlarms() == true } catch (e: Exception) { false }
+                Log.d("ReminderDebug", "canScheduleExactAlarms=$canExact")
+                if (!canExact) {
+                    // Open the system dialog where user may grant exact alarm scheduling
+                    val intent = Intent("android.app.action.REQUEST_SCHEDULE_EXACT_ALARM").apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    if (intent.resolveActivity(packageManager) != null) {
+                        startActivity(intent)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("ReminderDebug", "checkReminderPermissionsAndSettings failed", e)
         }
     }
 }
