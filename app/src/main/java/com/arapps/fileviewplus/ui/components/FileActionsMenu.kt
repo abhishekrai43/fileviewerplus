@@ -35,6 +35,7 @@ import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
 import com.arapps.fileviewplus.utils.findActivity
 import com.arapps.fileviewplus.viewer.ViewerRouter
+import com.arapps.fileviewplus.viewer.PlaybackController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -173,6 +174,13 @@ fun FileActionsMenu(
                 text = { Text("Open") },
                 onClick = {
                     expanded = false
+                    // If audio, play inline via PlaybackController; otherwise use ViewerRouter.
+                    try {
+                        if (file.type == FileNode.FileType.Audio) {
+                            PlaybackController.play(file)
+                            return@DropdownMenuItem
+                        }
+                    } catch (_: Exception) {}
                     val activity = context.findActivity()
                     ViewerRouter.openFile(activity ?: context, file, fromVault = false)
                 }

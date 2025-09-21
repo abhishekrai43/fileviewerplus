@@ -10,20 +10,24 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.arapps.fileviewplus.intent.IntentActions
 import com.arapps.fileviewplus.model.FileNode
+import com.arapps.fileviewplus.ui.components.AudioMiniPlayer
 import com.arapps.fileviewplus.ui.components.FileActionsMenu
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
@@ -123,6 +127,9 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
+        // Active inline audio player state for this screen (defined so clicks can set activeAudio)
+        val activeAudio = remember { mutableStateOf<FileNode?>(null) }
+
         Surface(modifier = Modifier
             .fillMaxSize()
             .padding(innerPadding)
@@ -151,7 +158,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                             .fillMaxWidth()
                             .padding(vertical = 6.dp)
                             .clickable {
-                                // Verify existence before opening viewer
+                                // Verify existence before opening viewer or inline player
                                 val f = File(file.path)
                                 if (!f.exists()) {
                                     files.removeAll { it.path == file.path }
@@ -159,7 +166,12 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                                     if (files.isEmpty()) onBack()
                                     return@clickable
                                 }
-                                ViewerRouter.openFile(activity ?: context, file, fromVault = false)
+                                // If audio, open inline player instead of full-screen viewer
+                                if (isAudioFile(file)) {
+                                    activeAudio.value = file
+                                } else {
+                                    ViewerRouter.openFile(activity ?: context, file, fromVault = false)
+                                }
                             }
                     ) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -177,6 +189,21 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                                     text = "${file.size / 1024} KB",
                                     style = MaterialTheme.typography.labelSmall
                                 )
+                            }
+
+                            // Show music-note play icon for audio files (small circular background)
+                            if (isAudioFile(file)) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(44.dp)
+                                        .background(Color.Black.copy(alpha = 0.08f), shape = androidx.compose.foundation.shape.CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    IconButton(onClick = { activeAudio.value = file }, modifier = Modifier.size(36.dp)) {
+                                        Icon(imageVector = Icons.Default.MusicNote, contentDescription = "Play", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             }
 
                             // Actions menu: delete/share/rename. FileActionsMenu must call onFileDeleted when deletion succeeded.
@@ -210,8 +237,27 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                     }
                 }
             }
+
+            // Inline mini player rendered as centered overlay when an audio file is active
+            activeAudio.value?.let { node ->
+                AudioMiniPlayer(fileNode = node, autoPlay = true, overlay = true, onClose = { activeAudio.value = null })
+            }
         }
     }
+}
+
+private fun isAudioFile(file: FileNode): Boolean {
+    try {
+        if (file.type == FileNode.FileType.Audio) return true
+        val ext = file.extension
+        if (ext.isNotBlank()) {
+            val audioExts = setOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr", "opus", "wma")
+            if (audioExts.contains(ext)) return true
+        }
+        val name = file.name
+        if (name.endsWith(".mp3", true) || name.endsWith(".wav", true)) return true
+    } catch (_: Exception) {}
+    return false
 }
 
 /**

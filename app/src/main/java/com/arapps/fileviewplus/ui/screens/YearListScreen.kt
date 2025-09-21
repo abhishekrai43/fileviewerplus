@@ -98,9 +98,12 @@ fun YearListScreen(
         onDispose { try { context.unregisterReceiver(receiver) } catch (_: Exception) {} }
     }
 
+    // Ensure the Year screen respects the app theme background (was showing as always dark
+    // because it didn't set a background and inherited a dark parent in some navigation cases).
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 24.dp)
     ) {
         Spacer(modifier = Modifier.height(24.dp))
@@ -214,6 +217,8 @@ fun YearListScreen(
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
                                         text = file.name,
+                                        // Use a readable color on top of the darkened image overlay. Keep white
+                                        // to ensure contrast regardless of theme (overlay is dark).
                                         style = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -236,4 +241,4 @@ fun YearListScreen(
             GalleryDialog(files = allYearFiles, startIndex = galleryStartIndex, onClose = { galleryOpen = false })
         }
     }
-}
+ }

@@ -32,7 +32,9 @@ import com.arapps.fileviewplus.model.NavigationState
 import com.arapps.fileviewplus.ui.screens.*
 import com.arapps.fileviewplus.utils.findActivity
 import com.arapps.fileviewplus.viewer.AudioViewer
+import com.arapps.fileviewplus.viewer.PlaybackController
 import com.arapps.fileviewplus.viewer.ViewerRouter
+import com.arapps.fileviewplus.ui.components.AudioMiniPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -143,14 +145,17 @@ fun FileViewApp(
             Toast.makeText(context, "File no longer exists: ${requested.name}", Toast.LENGTH_SHORT).show()
             nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
         } else {
-            // If the requested file is an audio file, open the in-app AudioViewer instead of using ViewerRouter
+            // If the requested file is an audio file, play inline via PlaybackController instead of showing full-screen viewer
             if (requested.type == FileNode.FileType.Audio) {
-                // Render AudioViewer as an in-app overlay and keep nav until user closes it
-                AudioViewer(fileNode = requested, isVault = nav.value.viewerIsVault) {
-                    nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
+                try {
+                    PlaybackController.play(requested)
+                } catch (_: Exception) {
+                    // fallback to in-app overlay if playback controller fails
+                    AudioViewer(fileNode = requested, isVault = nav.value.viewerIsVault) {
+                        nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
+                    }
                 }
-                // Don't proceed to other screens while viewer is showing
-                return
+                nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
             } else {
                 val activity = context.findActivity()
                 ViewerRouter.openFile(activity ?: context, requested, nav.value.viewerIsVault)
@@ -199,6 +204,12 @@ fun FileViewApp(
             onVaultClick = { nav.value = nav.value.copy(showVault = true) },
             nav = nav
         )
+    }
+
+    // Global inline audio mini-player (plays whenever PlaybackController.active is set)
+    val activeAudio by PlaybackController.active
+    activeAudio?.let { node ->
+        AudioMiniPlayer(fileNode = node, autoPlay = true, onClose = { PlaybackController.stop() })
     }
 }
 

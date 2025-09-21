@@ -80,12 +80,7 @@ fun FileViewTopAppBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Theme toggle with subtle label
-                Text(
-                    text = if (isDarkMode) "Dark" else "Light",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontSize = 12.sp
-                )
+                // Theme toggle (label removed — switch only)
                 Switch(
                     checked = isDarkMode,
                     onCheckedChange = onToggleTheme,

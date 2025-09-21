@@ -18,8 +18,15 @@ object ViewerRouter {
             ext in listOf("jpg", "jpeg", "png", "webp") -> ImageViewerActivity.launch(context, fileNode, fromVault)
             ext in listOf("txt", "log", "json", "xml", "md") -> TextViewerActivity.launch(context, fileNode, fromVault)
             ext in listOf("mp4", "mkv", "avi", "mov") -> VideoViewerActivity.launch(context, fileNode, fromVault)
-            // audio: open with external audio player (in-app Compose player is used elsewhere when available)
-            ext in listOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr") -> openExternally(context, File(fileNode.path), getAudioMime(ext))
+            // audio: play in-app inline via PlaybackController instead of opening a full-screen activity
+            ext in listOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr") -> {
+                try {
+                    PlaybackController.play(fileNode)
+                } catch (_: Exception) {
+                    // fallback to audio activity if PlaybackController fails
+                    try { AudioViewerActivity.launch(context, fileNode, fromVault) } catch (_: Exception) {}
+                }
+            }
             ext == "docx" -> openDocxExternally(context, File(fileNode.path)) // ✅ DOCX support
             else -> {
                 // Try a best-effort external open with inferred mime type, fallback to chooser or show unsupported

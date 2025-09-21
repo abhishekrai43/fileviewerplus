@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MusicNote
+import com.arapps.fileviewplus.ui.components.AudioMiniPlayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,7 +61,7 @@ fun DayListScreen(
     val allDayFiles =
         remember { mutableStateListOf<FileNode>().apply { addAll(month.days.flatMap { it.files }) } }
 
-    // NOTE: launching the full ImageViewerActivity on file click instead of an inline gallery
+    // NOTE: launching the full ImageViewerActivity on non-audio file clicks; audio opens inline player
 
     // Listen for file deletion broadcasts
     DisposableEffect(Unit) {
@@ -146,6 +148,9 @@ fun DayListScreen(
             )
         }
     ) { padding ->
+
+        // Active inline audio player for this screen
+        val activeAudio = remember { mutableStateOf<FileNode?>(null) }
 
         // Premium empty state
         if (days.all { it.files.isEmpty() } && allDayFiles.isEmpty()) {
@@ -253,8 +258,8 @@ fun DayListScreen(
                                 .fillMaxWidth()
                                 .aspectRatio(0.75f)
                                 .clickable {
-                                    // open full viewer activity
-                                    ImageViewerActivity.launch(context, file, fromVault = false)
+                                    // open full viewer for non-audio files only
+                                    if (!isAudioFile(file)) ImageViewerActivity.launch(context, file, fromVault = false)
                                 },
                             elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
                             shape = RoundedCornerShape(16.dp),
@@ -302,11 +307,54 @@ fun DayListScreen(
                                         )
                                     }
                                 }
+
+                                // If this file looks like audio, show a music-note icon to open inline player
+                                if (isAudioFile(file)) {
+                                    // Make the music icon clearly visible by placing it inside a semi-opaque circular background
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .size(44.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), shape = androidx.compose.foundation.shape.CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        IconButton(
+                                            onClick = { activeAudio.value = file },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MusicNote,
+                                                contentDescription = "Play",
+                                                tint = Color.White
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+            // Inline mini player rendered when an audio file is active
+            activeAudio.value?.let { node ->
+                AudioMiniPlayer(fileNode = node, autoPlay = true, onClose = { activeAudio.value = null })
+            }
         }
     }
+}
+
+private fun isAudioFile(file: FileNode): Boolean {
+    // Robust check using FileNode.FileType and extension. Fall back to name checks if needed.
+    try {
+        if (file.type == FileNode.FileType.Audio) return true
+        val ext = file.extension
+        if (ext.isNotBlank()) {
+            val audioExts = setOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr", "opus", "wma")
+            if (audioExts.contains(ext)) return true
+        }
+        val name = file.name
+        if (name.endsWith(".mp3", true) || name.endsWith(".wav", true)) return true
+    } catch (_: Exception) {}
+    return false
 }
