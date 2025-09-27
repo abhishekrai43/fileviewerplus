@@ -32,11 +32,12 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VaultNotesScreen(onBack: () -> Unit) {
+fun VaultNotesScreen(onBack: () -> Unit, initialCreate: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var notes by remember { mutableStateOf(listOf<Note>()) }
-    var showDialog by remember { mutableStateOf(false) }
+    // If initialCreate is true, open the new-note dialog immediately
+    var showDialog by remember { mutableStateOf(initialCreate) }
     var editNote by remember { mutableStateOf<Note?>(null) }
 
     fun loadNotes() {

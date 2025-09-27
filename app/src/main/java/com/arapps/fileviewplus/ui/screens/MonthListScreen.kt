@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -14,6 +17,10 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,16 +35,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
-import com.arapps.fileviewplus.viewer.ImageViewerActivity
+import com.arapps.fileviewplus.viewer.ViewerRouter
 import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.ui.components.FolderActionsMenu
+import com.arapps.fileviewplus.utils.getStoredPin
+import com.arapps.fileviewplus.utils.copyFilesToVaultAsync
+import com.arapps.fileviewplus.utils.DeletionManager
+import com.arapps.fileviewplus.ui.components.vault.EnterPinDialog
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
+import androidx.compose.foundation.ExperimentalFoundationApi
 
 @SuppressLint("NewApi")
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MonthListScreen(
     year: FileNode.Year,
@@ -51,7 +66,38 @@ fun MonthListScreen(
     val months = remember { mutableStateListOf<FileNode.Month>().apply { addAll(year.months) } }
     val allMonthFiles = remember { mutableStateListOf<FileNode>().apply { addAll(year.months.flatMap { it.days.flatMap { d -> d.files } }) } }
 
-    // NOTE: launching ImageViewerActivity when a file is tapped (no inline gallery)
+    // Multi-select state
+    val selected = remember { mutableStateListOf<String>() }
+    var showSelectionToolbar by remember { mutableStateOf(false) }
+    var showEnterPin by remember { mutableStateOf(false) }
+    var showChooseVaultFolder by remember { mutableStateOf(false) }
+    // single remembered coroutine scope for UI actions
+    val uiScope = rememberCoroutineScope()
+    val vaultRoot = File(context.filesDir, ".vault").apply { mkdirs() }
+
+    // helper to attempt delete originals after copy
+    suspend fun attemptDeleteOriginals() {
+        selected.toList().forEach { p ->
+            try {
+                val node = FileNode.fromFile(File(p))
+                when (val res = DeletionManager.deleteFile(context, node)) {
+                    DeletionManager.DeleteResult.Deleted -> {
+                        // removed via broadcast elsewhere
+                    }
+                    is DeletionManager.DeleteResult.NeedUserGrant -> {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Cannot delete automatically: permission needed for $p", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    is DeletionManager.DeleteResult.Failed -> {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Delete failed: ${res.reason}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     // Helper to recompute flat list from months (call after months change)
     fun rebuildFlatFilesFromMonths(mList: List<FileNode.Month>) {
@@ -106,18 +152,35 @@ fun MonthListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("📁 ${year.name}") },
-                navigationIcon = { IconButton(onClick = onBack) { Text("⬅") } },
-                actions = {
-                    IconButton(onClick = { showFlatFiles = !showFlatFiles }) {
-                        Icon(
-                            imageVector = if (showFlatFiles) Icons.Filled.Folder else Icons.AutoMirrored.Filled.List,
-                            contentDescription = "Toggle view"
-                        )
+            if (showSelectionToolbar && selected.isNotEmpty()) {
+                TopAppBar(
+                    title = { Text("${selected.size} selected") },
+                    navigationIcon = { IconButton(onClick = { selected.clear(); showSelectionToolbar = false }) { Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel selection") } },
+                    actions = {
+                        IconButton(onClick = { /* share - similar to DayListScreen */ }) { Icon(imageVector = Icons.Filled.Share, contentDescription = "Share") }
+                        IconButton(onClick = { showEnterPin = true }) { Icon(imageVector = Icons.Filled.Lock, contentDescription = "Move to Vault") }
+                        IconButton(onClick = {
+                            uiScope.launch {
+                                attemptDeleteOriginals()
+                                selected.clear(); showSelectionToolbar = false
+                            }
+                        }) { Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete") }
                     }
-                }
-            )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("📁 ${year.name}") },
+                    navigationIcon = { IconButton(onClick = onBack) { Text("⬅") } },
+                    actions = {
+                        IconButton(onClick = { showFlatFiles = !showFlatFiles }) {
+                            Icon(
+                                imageVector = if (showFlatFiles) Icons.Filled.Folder else Icons.AutoMirrored.Filled.List,
+                                contentDescription = "Toggle view"
+                            )
+                        }
+                    }
+                )
+            }
         }
     ) { padding ->
 
@@ -138,7 +201,12 @@ fun MonthListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
-                            .clickable { onSelect(month) },
+                            .clickable { onSelect(month) }
+                            .combinedClickable(onClick = { onSelect(month) }, onLongClick = {
+                                selected.clear()
+                                selected.addAll(month.days.flatMap { it.files }.map { it.path })
+                                showSelectionToolbar = true
+                            }),
                         elevation = CardDefaults.cardElevation(3.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = MaterialTheme.shapes.medium
@@ -176,19 +244,44 @@ fun MonthListScreen(
                 }
             } else {
                 items(allMonthFiles, key = { it.path }) { file ->
-                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clickable {
-                                // launch the full screen viewer
-                                ImageViewerActivity.launch(context, file)
-                            },
+                    val isSelected = selected.contains(file.path)
+                    // Compose a single modifier and apply conditional border when selected
+                    val baseModifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clickable {
+                            if (selected.isNotEmpty()) {
+                                if (isSelected) selected.remove(file.path) else selected.add(file.path)
+                                showSelectionToolbar = selected.isNotEmpty()
+                            } else {
+                                ViewerRouter.openFile(context, file, fromVault = false)
+                            }
+                        }
+                        .combinedClickable(onClick = {
+                            if (selected.isNotEmpty()) {
+                                if (isSelected) selected.remove(file.path) else selected.add(file.path)
+                                showSelectionToolbar = selected.isNotEmpty()
+                            } else {
+                                ViewerRouter.openFile(context, file, fromVault = false)
+                            }
+                        }, onLongClick = {
+                            if (!isSelected) selected.add(file.path)
+                            showSelectionToolbar = true
+                        })
+
+                    val cardModifier = if (isSelected) baseModifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), shape = MaterialTheme.shapes.medium) else baseModifier
+
+                    Card(
+                        modifier = cardModifier,
                         elevation = CardDefaults.cardElevation(3.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = MaterialTheme.shapes.medium
                     ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                         Box(modifier = Modifier.fillMaxSize()) {
+                            if (isSelected) {
+                                Box(modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)))
+                            }
+
                             FilePreviewThumbnail(
                                 file = File(file.path),
                                 modifier = Modifier
@@ -234,5 +327,30 @@ fun MonthListScreen(
             }
 
         }
-    }
-}
+        // (Selection toolbar moved to topBar for visibility)
+
+        if (showEnterPin) {
+            EnterPinDialog(onPinEntered = { pin -> if (pin == getStoredPin(context)) { showEnterPin = false; showChooseVaultFolder = true } else android.widget.Toast.makeText(context, "Incorrect PIN", android.widget.Toast.LENGTH_SHORT).show() }, onDismiss = { showEnterPin = false }, onForgotPin = {})
+        }
+
+        if (showChooseVaultFolder) {
+            // simple choose folder dialog, similar to DayListScreen
+            val folders = vaultRoot.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+            var selectedFolder by remember { mutableStateOf(folders.firstOrNull() ?: "") }
+            AlertDialog(onDismissRequest = { showChooseVaultFolder = false }, title = { Text("Select Vault Folder") }, text = {
+                Column { folders.forEach { name -> Row(modifier = Modifier.fillMaxWidth().clickable { selectedFolder = name }.padding(8.dp)) { RadioButton(selected = selectedFolder == name, onClick = { selectedFolder = name }); Spacer(Modifier.width(8.dp)); Text(name) } } }
+            }, confirmButton = {
+                TextButton(onClick = {
+                    val dest = if (selectedFolder.isBlank()) vaultRoot else File(vaultRoot, selectedFolder)
+                    uiScope.launch {
+                        val copied = copyFilesToVaultAsync(context, selected.toList(), dest)
+                        withContext(Dispatchers.Main) { android.widget.Toast.makeText(context, "${copied.size} file(s) copied to vault", android.widget.Toast.LENGTH_SHORT).show() }
+                        // after copy ask to delete originals
+                        attemptDeleteOriginals()
+                        selected.clear(); showSelectionToolbar = false; showChooseVaultFolder = false
+                    }
+                }) { Text("Move") }
+            }, dismissButton = { TextButton(onClick = { showChooseVaultFolder = false }) { Text("Cancel") } })
+        }
+     }
+ }

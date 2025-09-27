@@ -55,6 +55,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.launch
 import androidx.core.view.WindowInsetsControllerCompat
+import com.arapps.fileviewplus.logic.StorageStats
 
 class ImageViewerActivity : ComponentActivity() {
 
@@ -327,7 +328,7 @@ private fun ImageViewerScreen(
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Text(
-                                text = "${file.size / 1024} KB",
+                                text = StorageStats.formatSize(file.size),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

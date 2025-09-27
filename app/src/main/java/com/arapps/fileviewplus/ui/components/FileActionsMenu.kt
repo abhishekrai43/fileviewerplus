@@ -8,10 +8,17 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
@@ -33,12 +40,12 @@ import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETE_MANUAL_REMIND
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
+import com.arapps.fileviewplus.utils.copyFileToVault
 import com.arapps.fileviewplus.utils.findActivity
 import com.arapps.fileviewplus.viewer.ViewerRouter
-import com.arapps.fileviewplus.viewer.PlaybackController
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -79,6 +86,15 @@ fun FileActionsMenu(
     var showInvalidFolderDialog by remember { mutableStateOf(false) }
     var lastInvalidUri by remember { mutableStateOf<Uri?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    // state to show the in-app open/intent chooser
+    var showViewerChooser by remember { mutableStateOf(false) }
+
+    // New: separate state for Move-to-Vault folder chooser and post-copy delete confirmation
+    var showMoveToVaultFolderDialog by remember { mutableStateOf(false) }
+    var showDeleteOriginalConfirm by remember { mutableStateOf(false) }
+    var lastCopiedFile by remember { mutableStateOf<File?>(null) }
+    var vaultFolders by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedVaultFolder by remember { mutableStateOf("") }
 
     // small progress UI state
     var showOpProgress by remember { mutableStateOf(false) }
@@ -174,15 +190,8 @@ fun FileActionsMenu(
                 text = { Text("Open") },
                 onClick = {
                     expanded = false
-                    // If audio, play inline via PlaybackController; otherwise use ViewerRouter.
-                    try {
-                        if (file.type == FileNode.FileType.Audio) {
-                            PlaybackController.play(file)
-                            return@DropdownMenuItem
-                        }
-                    } catch (_: Exception) {}
-                    val activity = context.findActivity()
-                    ViewerRouter.openFile(activity ?: context, file, fromVault = false)
+                    // Show chooser allowing user to pick internal viewer vs external app and actions
+                    showViewerChooser = true
                 }
             )
 
@@ -254,6 +263,19 @@ fun FileActionsMenu(
             )
 
             DropdownMenuItem(
+                text = { Text("Move to Vault") },
+                onClick = {
+                    expanded = false
+                    // Show folder chooser for vault destination instead of directly copying to root
+                    val ctx = context
+                    val vr = File(ctx.filesDir, ".vault").apply { mkdirs() }
+                    vaultFolders = vr.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+                    selectedVaultFolder = vaultFolders.firstOrNull() ?: ""
+                    showMoveToVaultFolderDialog = true
+                }
+            )
+
+            DropdownMenuItem(
                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "Delete") },
                 text = { Text("Delete") },
                 onClick = {
@@ -264,7 +286,104 @@ fun FileActionsMenu(
         }
     }
 
-    // Confirmation dialog for delete
+    // Dialog: choose vault folder to copy into
+    if (showMoveToVaultFolderDialog) {
+        val ctx = context
+        val vaultRoot = File(ctx.filesDir, ".vault").apply { mkdirs() }
+        AlertDialog(
+            onDismissRequest = { showMoveToVaultFolderDialog = false },
+            title = { Text("Move to Vault") },
+            text = {
+                Column {
+                    if (vaultFolders.isEmpty()) {
+                        Text("No folders found in vault. Files will be copied to the vault root. You can create folders from Vault screen.")
+                    } else {
+                        Text("Choose a destination folder in the vault:")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        vaultFolders.forEach { name ->
+                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedVaultFolder = name }.padding(8.dp)) {
+                                androidx.compose.material3.RadioButton(selected = selectedVaultFolder == name, onClick = { selectedVaultFolder = name })
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(name)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showMoveToVaultFolderDialog = false
+                    // perform copy to chosen folder
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            val dest = if (selectedVaultFolder.isBlank()) vaultRoot else File(vaultRoot, selectedVaultFolder)
+                            if (!dest.exists()) dest.mkdirs()
+                            val copied = copyFileToVault(file.path, dest)
+                            withContext(Dispatchers.Main) {
+                                if (copied != null) {
+                                    Toast.makeText(ctx, "Copied to Vault: ${copied.name}", Toast.LENGTH_SHORT).show()
+                                    lastCopiedFile = copied
+                                    // Ask user separately whether to delete the original file
+                                    showDeleteOriginalConfirm = true
+                                } else {
+                                    Toast.makeText(ctx, "Failed to copy to Vault", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } catch (t: Throwable) {
+                            withContext(Dispatchers.Main) { Toast.makeText(ctx, "Error: ${t.localizedMessage}", Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                }) { Text("Copy") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showMoveToVaultFolderDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Confirmation dialog for original-file deletion after a Move-to-Vault copy
+    if (showDeleteOriginalConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteOriginalConfirm = false },
+            title = { Text("Delete original file?") },
+            text = { Text("Do you want to delete the original file after copying it to the vault? This cannot be undone.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showDeleteOriginalConfirm = false
+                    coroutineScope.launch {
+                        val res = attemptDeleteWithFallbacks(context, file)
+                        when (res) {
+                            is DeletionResult.Deleted -> {
+                                withContext(Dispatchers.Main) {
+                                    onFileDeleted(file)
+                                    sendDeletedBroadcast(context, file.path)
+                                    Toast.makeText(context, "Deleted ${file.name}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            is DeletionResult.NeedUserGrant -> {
+                                withContext(Dispatchers.Main) { Toast.makeText(context, res.message, Toast.LENGTH_LONG).show() }
+                                // Ask user to pick a folder for deletion retry
+                                pendingAction = ACTION_DELETE
+                                pendingFile = file
+                                pickTreeLauncher.launch(res.suggestedUriToOpen)
+                            }
+                            is DeletionResult.Failed -> {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Could not delete: ${res.reason}. You may need to delete it from the original location.", Toast.LENGTH_LONG).show()
+                                    notifyManualDeleteRequired(context, file.path)
+                                }
+                            }
+                        }
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteOriginalConfirm = false }) { Text("Keep Original") }
+            }
+        )
+    }
+
+    // Confirmation dialog for delete (explicit Delete action)
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -287,9 +406,9 @@ fun FileActionsMenu(
                                 withContext(Dispatchers.Main) { Toast.makeText(context, res.message, Toast.LENGTH_LONG).show() }
                                 // Ask user to pick a folder for deletion retry
                                 pendingAction = ACTION_DELETE
-                                 pendingFile = file
-                                 pickTreeLauncher.launch(res.suggestedUriToOpen)
-                             }
+                                pendingFile = file
+                                pickTreeLauncher.launch(res.suggestedUriToOpen)
+                            }
                             is DeletionResult.Failed -> {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(context, "Could not delete: ${res.reason}. You may need to delete it from the original location.", Toast.LENGTH_LONG).show()
@@ -340,6 +459,36 @@ fun FileActionsMenu(
             text = { androidx.compose.material3.CircularProgressIndicator() },
             confirmButton = {},
             dismissButton = {}
+        )
+    }
+
+    // ViewerChooser - a compact modal that offers internal open, external open and actions
+    if (showViewerChooser) {
+        ViewerChooser(
+            file = file,
+            onDismiss = { showViewerChooser = false },
+            onOpenInternal = {
+                try {
+                    ViewerRouter.openFile(context.findActivity() ?: context, file, fromVault = false)
+                } catch (t: Throwable) { Toast.makeText(context, "Failed to open: ${t.localizedMessage}", Toast.LENGTH_SHORT).show() }
+            },
+            onOpenExternal = {
+                // build external view intent
+                try {
+                    val f = java.io.File(file.path)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".provider", f)
+                    val ext = file.extension.lowercase()
+                    val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
+                    val intent = Intent(Intent.ACTION_VIEW).apply { setDataAndType(uri, mime); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                    if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(Intent.createChooser(intent, "Open with"))
+                } catch (t: Throwable) { Toast.makeText(context, "No app found: ${t.localizedMessage}", Toast.LENGTH_SHORT).show() }
+            },
+            onMoveToVault = { showMoveToVaultFolderDialog = true },
+            onZip = {
+                pendingAction = ACTION_ZIP; pendingFile = file; pickTreeLauncher.launch(null)
+            },
+            onDelete = { showDeleteDialog = true }
         )
     }
 }

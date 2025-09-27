@@ -6,10 +6,18 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileInputStream
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 fun storePin(context: Context, pin: String) {
-    context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
-        .edit().putString("vault_pin", pin).apply()
+    // Only set the PIN if one does not already exist — avoid accidental resets from other flows
+    val prefs = context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
+    val existing = prefs.getString("vault_pin", null)
+    if (existing == null) {
+        prefs.edit().putString("vault_pin", pin).apply()
+    }
 }
 
 fun getStoredPin(context: Context): String? {
@@ -37,6 +45,37 @@ fun importFileToVault(context: Context, uri: Uri, destDir: File): String? {
     return name
 }
 
+/** Copy a normal file (by path) into the vault folder. Returns the destination File or null on failure. */
+fun copyFileToVault(srcPath: String, destDir: File): File? {
+    return try {
+        val src = File(srcPath)
+        if (!src.exists()) return null
+        val dest = File(destDir, src.name)
+        FileInputStream(src).use { input ->
+            FileOutputStream(dest).use { output ->
+                input.copyTo(output)
+            }
+        }
+        dest
+    } catch (e: IOException) {
+        e.printStackTrace()
+        null
+    }
+}
+
+/** Copy multiple files into the destination vault folder, returns list of successfully copied files. */
+suspend fun copyFilesToVaultAsync(context: Context, srcPaths: List<String>, destDir: File): List<File> =
+    withContext(Dispatchers.IO) {
+        val copied = mutableListOf<File>()
+        srcPaths.forEach { p ->
+            try {
+                val f = copyFileToVault(p, destDir)
+                if (f != null) copied.add(f)
+            } catch (_: Exception) {}
+        }
+        copied
+    }
+
 object VaultUtils {
     fun createFolderIfNotExists(parentDir: File, name: String): Boolean {
         val sanitized = name.trim().replace(Regex("[\\\\/:*?\"<>|]"), "")
@@ -63,11 +102,17 @@ fun verifyRecoveryAnswer(context: Context, input: String): Boolean {
         .getString("vault_answer", null)
     return input.trim() == stored
 }
+
 fun storePinRecovery(context: Context, pin: String, hint: String, answer: String) {
-    context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE).edit().apply {
-        putString("vault_pin", pin)
-        putString("vault_hint", hint)
-        putString("vault_answer", answer.lowercase().trim())
-        apply()
+    // Only set recovery info if a PIN does not already exist (avoid accidental overwrite)
+    val prefs = context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE)
+    val existing = prefs.getString("vault_pin", null)
+    if (existing == null) {
+        prefs.edit().apply {
+            putString("vault_pin", pin)
+            putString("vault_hint", hint)
+            putString("vault_answer", answer.lowercase().trim())
+            apply()
+        }
     }
 }

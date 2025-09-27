@@ -3,7 +3,7 @@ package com.arapps.fileviewplus.model
 import java.io.File
 
 enum class FilterMode {
-    NONE, OLD, LARGE
+    NONE, OLD, LARGE, DUPLICATE
 }
 
 data class NavigationState(
@@ -23,7 +23,11 @@ data class NavigationState(
     val filteredFiles: List<FileNode> = emptyList(),
 
     val filteredTitle: String = "",
-    val filterMode: FilterMode = FilterMode.NONE
+    val filterMode: FilterMode = FilterMode.NONE,
+
+    // New: request Vault to open directly into Notes UI
+    val showVaultNotes: Boolean = false,
+    val showVaultNotesCreation: Boolean = false
 ) {
     fun goBack(): NavigationState {
         return when {
@@ -35,7 +39,7 @@ data class NavigationState(
                 filterMode = FilterMode.NONE
             )
             vaultFolder != null -> copy(vaultFolder = null)
-            showVault -> copy(showVault = false)
+            showVault -> copy(showVault = false, showVaultNotes = false, showVaultNotesCreation = false)
             showFileTypeExplorer -> copy(showFileTypeExplorer = false)
             day != null -> copy(day = null)
             month != null -> copy(month = null)

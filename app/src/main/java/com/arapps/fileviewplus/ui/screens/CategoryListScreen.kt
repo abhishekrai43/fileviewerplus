@@ -7,7 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.lazy.grid.items
 import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.model.FilterMode
@@ -33,34 +35,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 
-// Helper to convert month names ("Jan", "January", or numeric strings) to month numbers for sorting
-private fun monthNameToNumber(monthName: String): Int {
-    val s = monthName.trim()
-    // Try numeric input first
-    s.toIntOrNull()?.let { if (it in 1..12) return it }
-    if (s.isEmpty()) return 0
-    val key = s.take(3).lowercase(Locale.getDefault())
-    return when (key) {
-        "jan" -> 1
-        "feb" -> 2
-        "mar" -> 3
-        "apr" -> 4
-        "may" -> 5
-        "jun" -> 6
-        "jul" -> 7
-        "aug" -> 8
-        "sep" -> 9
-        "oct" -> 10
-        "nov" -> 11
-        "dec" -> 12
-        else -> 0
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @SuppressLint("NewApi", "UnusedBoxWithConstraintsScope")
 @Composable
 fun CategoryListScreen(
@@ -72,7 +48,9 @@ fun CategoryListScreen(
     isDarkMode: Boolean,
     onToggleTheme: (Boolean) -> Unit,
     onVaultClick: () -> Unit,
-    nav: MutableState<NavigationState>
+    nav: MutableState<NavigationState>,
+    onRefresh: () -> Unit = {},
+    isScanning: Boolean = false
 ) {
     val context = LocalContext.current
     val useFtp = remember { mutableStateOf(true) }
@@ -122,6 +100,7 @@ fun CategoryListScreen(
     // Generate suggestions
     val oldFiles = remember(insights.value) { FileAnalytics.getOldFiles(insights.value, 180) }
     val largeFiles = remember(insights.value) { FileAnalytics.getLargeFiles(insights.value, 200) }
+    val duplicateFiles = remember(insights.value) { FileAnalytics.getDuplicateFiles(insights.value) }
 
     val suggestions = listOfNotNull(
         oldFiles.takeIf { it.isNotEmpty() }?.let { old ->
@@ -129,7 +108,8 @@ fun CategoryListScreen(
                 nav.value = nav.value.copy(
                     showFilteredList = true,
                     filteredFiles = old.map { it.file },
-                    filteredTitle = "Old Files"
+                    filteredTitle = "Old Files",
+                    filterMode = FilterMode.OLD
                 )
             }
         },
@@ -138,7 +118,18 @@ fun CategoryListScreen(
                 nav.value = nav.value.copy(
                     showFilteredList = true,
                     filteredFiles = large.map { it.file },
-                    filteredTitle = "Large Files"
+                    filteredTitle = "Large Files",
+                    filterMode = FilterMode.LARGE
+                )
+            }
+        },
+        duplicateFiles.takeIf { it.isNotEmpty() }?.let { dup ->
+            "\uD83D\uDCDD ${dup.size} duplicate file${if (dup.size > 1) "s" else ""} found" to {
+                nav.value = nav.value.copy(
+                    showFilteredList = true,
+                    filteredFiles = dup.map { it.file },
+                    filteredTitle = "Duplicate Files",
+                    filterMode = FilterMode.DUPLICATE
                 )
             }
         }
@@ -162,6 +153,7 @@ fun CategoryListScreen(
             FilteredFileListScreen(
                 files = nav.value.filteredFiles.map { File(it.path) },
                 title = nav.value.filteredTitle,
+                filterMode = nav.value.filterMode,
                 onBack = {
                     if (nav.value.viewerFile != null) {
                         nav.value = nav.value.copy(viewerFile = null, viewerIsVault = false)
@@ -196,7 +188,9 @@ fun CategoryListScreen(
             FileViewTopAppBar(
                 isDarkMode = isDarkMode,
                 onToggleTheme = onToggleTheme,
-                onGoHome = onGoHome
+                onGoHome = onGoHome,
+                isScanning = isScanning,
+                onRefresh = onRefresh
             )
         },
         bottomBar = {
@@ -257,7 +251,9 @@ fun CategoryListScreen(
                 Triple("IMG", FileCategory.IMAGE, "Images"),
                 Triple("VID", FileCategory.VIDEO, "Videos"),
                 Triple("AUDIO", FileCategory.AUDIO, "Audio"),
-                Triple("DOC", FileCategory.DOCUMENT, "Documents")
+                Triple("DOC", FileCategory.DOCUMENT, "Documents"),
+                // Add Others (OTH) to surface any file types the scanner categorizes as OTH
+                Triple("OTH", FileCategory.OTHER, "Others")
             )
 
             val audioExts = setOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr", "opus", "wma")
@@ -267,7 +263,8 @@ fun CategoryListScreen(
                 "IMG" to Color(0xFF0288D1),
                 "VID" to Color(0xFF2E7D32),
                 "AUDIO" to Color(0xFFEF6C00)
-            )
+                // OTH color (teal-ish)
+            ).toMutableMap().apply { put("OTH", Color(0xFF00838F)) }
 
             // Compute counts and sizes from the flattened allFiles list so AUDIO is detected even when
             // there is no dedicated "AUDIO" category. This is robust across different category naming.
@@ -313,90 +310,70 @@ fun CategoryListScreen(
             }
 
             fun isDocumentFile(fn: FileNode): Boolean {
-                return fn.type == FileNode.FileType.Document || fn.extension in setOf(
-                    "pdf",
-                    "doc",
-                    "docx",
-                    "ppt",
-                    "pptx",
-                    "xls",
-                    "xlsx",
-                    "txt",
-                    "rtf"
-                )
+                // Only treat PDF, DOC, DOCX and TXT as documents for the Documents card.
+                // Everything else (csv, json, xml, xls, apk, zip, etc.) should fall into Others.
+                val ext = fn.extension.lowercase()
+                return ext in setOf("pdf", "doc", "docx", "txt")
             }
 
-            val countsByKey = remember(allFiles) {
+            // derive counts and bytes from the live insights list so deletions update counts immediately
+            val countsByKey = remember(insights.value) {
                 mapOf(
-                    "IMG" to allFiles.count { isImageFile(it) },
-                    "VID" to allFiles.count { isVideoFile(it) },
-                    "AUDIO" to allFiles.count { isAudioFile(it) },
-                    "DOC" to allFiles.count { isDocumentFile(it) }
+                    "IMG" to insights.value.count { isImageFile(it.file) },
+                    "VID" to insights.value.count { isVideoFile(it.file) },
+                    "AUDIO" to insights.value.count { isAudioFile(it.file) },
+                    "DOC" to insights.value.count { isDocumentFile(it.file) },
+                    // OTH: files not matching image/video/audio/document
+                    "OTH" to insights.value.count { !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(it.file) && !isAudioFile(it.file) }
                 )
             }
 
-            val bytesByKey = remember(allFiles) {
+            val bytesByKey = remember(insights.value) {
                 mapOf(
-                    "IMG" to allFiles.filter { isImageFile(it) }.sumOf { it.size },
-                    "VID" to allFiles.filter { isVideoFile(it) }.sumOf { it.size },
-                    "AUDIO" to allFiles.filter { isAudioFile(it) }.sumOf { it.size },
-                    "DOC" to allFiles.filter { isDocumentFile(it) }.sumOf { it.size }
+                    "IMG" to insights.value.filter { isImageFile(it.file) }.sumOf { it.size },
+                    "VID" to insights.value.filter { isVideoFile(it.file) }.sumOf { it.size },
+                    "AUDIO" to insights.value.filter { isAudioFile(it.file) }.sumOf { it.size },
+                    "DOC" to insights.value.filter { isDocumentFile(it.file) }.sumOf { it.size },
+                    "OTH" to insights.value.filter { !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(it.file) && !isAudioFile(it.file) }.sumOf { it.size }
                 )
             }
 
-            // Build a stats list for the StorageUsageBar that prefers MediaStore numbers when available
+            // Helper functions (declared plainly at this scope) to merge scanner and MediaStore data
+            fun findMediaTotalFor(key: String): Long {
+                val synonyms = when (key.uppercase()) {
+                    "IMG" -> listOf("img", "image", "images")
+                    "VID" -> listOf("vid", "video", "videos")
+                    "AUDIO" -> listOf("audio", "audios")
+                    "DOC" -> listOf("doc", "document", "documents")
+                    else -> listOf(key.lowercase())
+                }
+                return mediaStats.value.firstOrNull { ms ->
+                    val name = ms.name
+                    synonyms.any { syn -> name.equals(syn, ignoreCase = true) || name.contains(syn, ignoreCase = true) }
+                }?.totalBytes ?: 0L
+            }
+
+            fun findMediaCountFor(key: String): Int {
+                val synonyms = when (key.uppercase()) {
+                    "IMG" -> listOf("img", "image", "images")
+                    "VID" -> listOf("vid", "video", "videos")
+                    "AUDIO" -> listOf("audio", "audios")
+                    "DOC" -> listOf("doc", "document", "documents")
+                    else -> listOf(key.lowercase())
+                }
+                return mediaStats.value.firstOrNull { ms ->
+                    val name = ms.name
+                    synonyms.any { syn -> name.equals(syn, ignoreCase = true) || name.contains(syn, ignoreCase = true) }
+                }?.count ?: 0
+            }
+
             val displayStats = remember(bytesByKey, mediaStats.value) {
-                // helper to pick MediaStore when scanner has zero bytes; otherwise prefer scanner totals
-                fun mergedBytes(key: String): Long {
-                    val scanner = bytesByKey[key] ?: 0L
-                    val synonyms = when (key.uppercase()) {
-                        "IMG" -> listOf("img", "image", "images")
-                        "VID" -> listOf("vid", "video", "videos")
-                        "AUDIO" -> listOf("audio", "audios")
-                        "DOC" -> listOf("doc", "document", "documents")
-                        else -> listOf(key.lowercase())
-                    }
-                    val media = mediaStats.value.firstOrNull { ms ->
-                        val name = ms.name
-                        synonyms.any { syn ->
-                            name.equals(syn, ignoreCase = true) || name.contains(
-                                syn,
-                                ignoreCase = true
-                            )
-                        }
-                    }?.totalBytes ?: 0L
-
-                    return if (scanner == 0L) media else scanner
-                }
-
-                // choose counts similarly: prefer scanner count unless zero, then use media count
-                fun mergedCount(key: String): Int {
-                    val scannerCount = countsByKey[key] ?: 0
-                    val synonyms = when (key.uppercase()) {
-                        "IMG" -> listOf("img", "image", "images")
-                        "VID" -> listOf("vid", "video", "videos")
-                        "AUDIO" -> listOf("audio", "audios")
-                        "DOC" -> listOf("doc", "document", "documents")
-                        else -> listOf(key.lowercase())
-                    }
-                    val mediaCount = mediaStats.value.firstOrNull { ms ->
-                        val name = ms.name
-                        synonyms.any { syn ->
-                            name.equals(syn, ignoreCase = true) || name.contains(
-                                syn,
-                                ignoreCase = true
-                            )
-                        }
-                    }?.count ?: 0
-
-                    return if (scannerCount == 0) mediaCount else scannerCount
-                }
-
                 listOf(
-                    StorageStats.Stat("DOC", mergedBytes("DOC"), mergedCount("DOC")),
-                    StorageStats.Stat("IMG", mergedBytes("IMG"), mergedCount("IMG")),
-                    StorageStats.Stat("VID", mergedBytes("VID"), mergedCount("VID")),
-                    StorageStats.Stat("AUDIO", mergedBytes("AUDIO"), mergedCount("AUDIO"))
+                    StorageStats.Stat("DOC", if ((bytesByKey["DOC"] ?: 0L) == 0L) findMediaTotalFor("DOC") else (bytesByKey["DOC"] ?: 0L), if ((countsByKey["DOC"] ?: 0) == 0) findMediaCountFor("DOC") else (countsByKey["DOC"] ?: 0)),
+                    StorageStats.Stat("IMG", if ((bytesByKey["IMG"] ?: 0L) == 0L) findMediaTotalFor("IMG") else (bytesByKey["IMG"] ?: 0L), if ((countsByKey["IMG"] ?: 0) == 0) findMediaCountFor("IMG") else (countsByKey["IMG"] ?: 0)),
+                    StorageStats.Stat("VID", if ((bytesByKey["VID"] ?: 0L) == 0L) findMediaTotalFor("VID") else (bytesByKey["VID"] ?: 0L), if ((countsByKey["VID"] ?: 0) == 0) findMediaCountFor("VID") else (countsByKey["VID"] ?: 0)),
+                    StorageStats.Stat("AUDIO", if ((bytesByKey["AUDIO"] ?: 0L) == 0L) findMediaTotalFor("AUDIO") else (bytesByKey["AUDIO"] ?: 0L), if ((countsByKey["AUDIO"] ?: 0) == 0) findMediaCountFor("AUDIO") else (countsByKey["AUDIO"] ?: 0))
+                    , StorageStats.Stat("OTH", if ((bytesByKey["OTH"] ?: 0L) == 0L) findMediaTotalFor("OTH") else (bytesByKey["OTH"] ?: 0L), if ((countsByKey["OTH"] ?: 0) == 0) findMediaCountFor("OTH") else (countsByKey["OTH"] ?: 0))
                 )
             }
 
@@ -425,19 +402,51 @@ fun CategoryListScreen(
                     "IMG" to (countsByKey["IMG"]?.takeIf { it != 0 } ?: mediaCountFor("IMG")),
                     "VID" to (countsByKey["VID"]?.takeIf { it != 0 } ?: mediaCountFor("VID")),
                     "AUDIO" to (countsByKey["AUDIO"]?.takeIf { it != 0 } ?: mediaCountFor("AUDIO")),
-                    "DOC" to (countsByKey["DOC"]?.takeIf { it != 0 } ?: mediaCountFor("DOC"))
+                    "DOC" to (countsByKey["DOC"]?.takeIf { it != 0 } ?: mediaCountFor("DOC")),
+                    "OTH" to (countsByKey["OTH"]?.takeIf { it != 0 } ?: mediaCountFor("OTH"))
                 )
             }
 
-            // Render storage usage bar and suggestion card(s) above the grid with deterministic heights
-            // Allow StorageUsageBar to size itself (stacked bar + legend). Previously a fixed
-            // 56.dp height clipped the legend/chips so the colored breakdown wasn't visible.
-            Column(
+            // Replaced the previous StorageUsageBar Column with a compact 2-column chips grid
+            // so the storage stats occupy less vertical space while remaining visible.
+            val totalBytesForPct = displayStats.sumOf { it.totalBytes }
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                StorageUsageBar(stats = displayStats)
+                items(displayStats) { stat ->
+                    val pct = if (totalBytesForPct > 0L) (stat.totalBytes * 100 / totalBytesForPct).toInt() else 0
+                    Card(
+                        modifier = Modifier
+                            .height(36.dp)
+                            .fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(categoryColorMap[stat.name] ?: MaterialTheme.colorScheme.primary))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("${stat.name} - ${StorageStats.formatSize(stat.totalBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Text("$pct%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
             }
 
             if (suggestions.isNotEmpty()) {
@@ -483,183 +492,117 @@ fun CategoryListScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Let the grid occupy a compact fixed height so both rows reliably display across devices.
-            val fixedGridHeight = 200.dp
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(fixedGridHeight)) {
-                val chunks = keyToDisplay.chunked(2)
-                // Make the column fill the Box height and split rows evenly
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    chunks.forEach { rowItems ->
-                        // Give each row equal vertical weight so the two rows split the available grid height.
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            rowItems.forEach { (key, _, label) ->
-                                val cat = categories.find { it.name == key }
-                                val count = displayCounts[key] ?: (countsByKey[key] ?: 0)
-                                val sizeBytes = displayStats.find {
-                                    it.name.equals(
-                                        key,
-                                        ignoreCase = true
-                                    )
-                                }?.totalBytes ?: (bytesByKey[key] ?: 0L)
+            // Compact summary cards grid (Images, Videos, Audio, Documents) — reduced height so more content fits on screen
+            val summaryKeys = listOf("IMG", "VID", "AUDIO", "DOC")
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(summaryKeys) { key ->
+                    val label = keyToDisplay.find { it.first == key }?.third ?: key
+                    val count = displayCounts[key] ?: (countsByKey[key] ?: 0)
+                    val sizeBytes = displayStats.find { it.name.equals(key, ignoreCase = true) }?.totalBytes ?: (bytesByKey[key] ?: 0L)
 
-                                // Each card fills half the vertical space of the grid (two rows), minus spacing.
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .clickable {
-                                            if (cat != null) {
-                                                onSelect(cat)
-                                            } else {
-                                                val filesForKey = when (key) {
-                                                    "IMG" -> allFiles.filter { it.type == FileNode.FileType.Image }
-                                                    "VID" -> allFiles.filter { it.type == FileNode.FileType.Video }
-                                                    "AUDIO" -> allFiles.filter { it.type == FileNode.FileType.Audio || it.extension in audioExts }
-                                                    "DOC" -> allFiles.filter { it.type == FileNode.FileType.Document }
-                                                    else -> emptyList()
-                                                }
-                                                if (filesForKey.isNotEmpty()) {
-                                                    if (key == "AUDIO") {
-                                                        filesForKey.firstOrNull()
-                                                            ?.let { firstFile ->
-                                                                activeAudio.value = firstFile
-                                                            } ?: run {
-                                                            // fallback: construct virtual category (unchanged)
-                                                            val sdfYear = SimpleDateFormat(
-                                                                "yyyy",
-                                                                Locale.getDefault()
-                                                            )
-                                                            val sdfMonth = SimpleDateFormat(
-                                                                "MMM",
-                                                                Locale.getDefault()
-                                                            )
-                                                            val sdfDay = SimpleDateFormat(
-                                                                "dd-MMM-yyyy",
-                                                                Locale.getDefault()
-                                                            )
-                                                            val yearsMap =
-                                                                mutableMapOf<String, MutableMap<String, MutableMap<String, MutableList<FileNode>>>>()
-                                                            filesForKey.forEach { f ->
-                                                                val d = Date(f.lastModified)
-                                                                val y = sdfYear.format(d)
-                                                                val m = sdfMonth.format(d)
-                                                                val day = sdfDay.format(d)
-                                                                val yearMap =
-                                                                    yearsMap.getOrPut(y) { mutableMapOf() }
-                                                                val monthMap =
-                                                                    yearMap.getOrPut(m) { mutableMapOf() }
-                                                                val dayMap =
-                                                                    monthMap.getOrPut(day) { mutableListOf() }
-                                                                dayMap.add(f)
-                                                            }
-                                                            val virtualCategory = FileNode.Category(
-                                                                name = "AUDIO",
-                                                                years = yearsMap.map { (yName, months) ->
-                                                                    FileNode.Year(
-                                                                        name = yName,
-                                                                        months = months.map { (mName, days) ->
-                                                                            FileNode.Month(
-                                                                                name = mName,
-                                                                                days = days.map { (dayName, files) ->
-                                                                                    FileNode.Day(
-                                                                                        name = dayName,
-                                                                                        files = files.sortedByDescending { it.name })
-                                                                                }
-                                                                                    .sortedByDescending { it.name }
-                                                                            )
-                                                                        }.sortedByDescending {
-                                                                            monthNameToNumber(it.name)
-                                                                        }
-                                                                    )
-                                                                }.sortedByDescending {
-                                                                    it.name.toIntOrNull() ?: 0
-                                                                }
-                                                            )
-                                                            nav.value =
-                                                                nav.value.copy(category = virtualCategory)
-                                                        }
-                                                    } else {
-                                                        nav.value = nav.value.copy(
-                                                            showFilteredList = true,
-                                                            filteredFiles = filesForKey.map {
-                                                                FileNode.fromFile(
-                                                                    File(it.path)
-                                                                )
-                                                            },
-                                                            filteredTitle = label
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        },
-                                    shape = MaterialTheme.shapes.medium,
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxSize().padding(12.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            // Use a small colored dot for category cards (including AUDIO) to keep the grid compact
-                                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(categoryColorMap[key] ?: MaterialTheme.colorScheme.primary))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface
+                    Card(
+                        modifier = Modifier
+                            .height(96.dp)
+                            .fillMaxWidth()
+                            .clickable {
+                                val cat = categories.find { it.name == key }
+                                if (cat != null) onSelect(cat) else {
+                                    val filesForKey = when (key) {
+                                        "IMG" -> allFiles.filter { it.type == FileNode.FileType.Image }
+                                        "VID" -> allFiles.filter { it.type == FileNode.FileType.Video }
+                                        "AUDIO" -> allFiles.filter { it.type == FileNode.FileType.Audio || it.extension in audioExts }
+                                        "DOC" -> allFiles.filter { f ->
+                                            val ext = f.extension.lowercase()
+                                            ext in setOf("pdf", "doc", "docx", "txt")
+                                        }
+                                        else -> emptyList()
+                                    }
+                                    if (filesForKey.isNotEmpty()) {
+                                        if (key == "AUDIO") {
+                                            filesForKey.firstOrNull()?.let { firstFile -> activeAudio.value = firstFile }
+                                        } else {
+                                            nav.value = nav.value.copy(
+                                                showFilteredList = true,
+                                                filteredFiles = filesForKey.map { FileNode.fromFile(File(it.path)) },
+                                                filteredTitle = label
                                             )
                                         }
-                                        Text(
-                                            text = "$count",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = StorageStats.formatSize(sizeBytes),
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Medium
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
                                     }
                                 }
+                            },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(categoryColorMap[key] ?: MaterialTheme.colorScheme.primary))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                             }
+                            Text("$count", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                            Text(StorageStats.formatSize(sizeBytes), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurface)
                         }
-
                     }
+                }
+            }
 
-                } // end Column (scaffold content)
+            // Premium CTA: Create a reminder Note (prominent button placed below the cards)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            } // end Scaffold
-
-            // Show server started dialog outside scaffold content so it overlays correctly
-            if (showDialog.value) {
-                val port = if (protocol.value == "FTP") 2121 else 8080
-                AlertDialog(
-                    onDismissRequest = { showDialog.value = false },
-                    title = { Text("Server Started ✅") },
-                    text = {
-                        Text(
-                            "Protocol: ${protocol.value}\n" +
-                                    "IP Address: ${ipAddress.value}\n" +
-                                    "Port: $port\n\n" +
-                                    "No username/password needed.\n" +
-                                    "If using FTP, use a client like FileZilla.\n\n" +
-                                    "For HTTP, open ${ipAddress.value}:$port in your browser."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showDialog.value = false }) { Text("OK") }
-                    }
-                )
+            ElevatedButton(
+                onClick = {
+                    nav.value = nav.value.copy(
+                        showVault = true,
+                        showVaultNotes = true,
+                        showVaultNotesCreation = true
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(56.dp),
+                colors = ButtonDefaults.elevatedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 8.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.StickyNote2, contentDescription = null)
+                Spacer(Modifier.width(10.dp))
+                Text("Create a reminder Note", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.Star, contentDescription = "Premium", tint = Color(0xFFFFD700))
             }
         }
+    }
+
+    // Show server started dialog outside scaffold content so it overlays correctly
+    if (showDialog.value) {
+        val port = if (protocol.value == "FTP") 2121 else 8080
+        AlertDialog(
+            onDismissRequest = { showDialog.value = false },
+            title = { Text("Server Started ✅") },
+            text = {
+                Text(
+                    "Protocol: ${protocol.value}\n" +
+                            "IP Address: ${ipAddress.value}\n" +
+                            "Port: $port\n\n" +
+                            "No username/password needed.\n" +
+                            "If using FTP, use a client like FileZilla.\n\n" +
+                            "For HTTP, open ${ipAddress.value}:$port in your browser."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog.value = false }) { Text("OK") }
+            }
+        )
     }
 }

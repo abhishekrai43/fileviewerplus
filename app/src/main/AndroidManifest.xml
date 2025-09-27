@@ -105,6 +105,43 @@
             android:exported="false"
             android:theme="@style/Theme.Fileviewplus" />
 
+        <!-- Lightweight in-app preview activities (internal, non-exported) -->
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.DocxPreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.CsvPreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.ZipViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.JsonXmlPreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <!-- In-app ebook viewers -->
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.EpubViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.Fb2ViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
+        <activity
+            android:name="com.arapps.fileviewplus.viewer.EbookFallbackActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Fileviewplus" />
+
         <!-- Reminder Service -->
         <service
             android:name=".service.ReminderForegroundService"

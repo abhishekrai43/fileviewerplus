@@ -29,4 +29,10 @@ object FileAnalytics {
         val threshold = largerThanMB * 1024 * 1024L
         return insights.filter { it.size > threshold }
     }
+
+    fun getDuplicateFiles(insights: List<FileInsight>): List<FileInsight> {
+        // Group by file size and lowercased name to find likely duplicates. Return all files that belong to a duplicate group.
+        val groups = insights.groupBy { Pair(it.size, it.file.name.lowercase()) }
+        return groups.values.filter { it.size > 1 }.flatten()
+    }
 }

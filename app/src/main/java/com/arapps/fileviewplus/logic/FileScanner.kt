@@ -80,7 +80,8 @@ object FileScanner {
                 docExt.contains(ext) -> "DOC"
                 looksLikeHiddenRecorder -> "HIDDEN_AUDIO"
                 audioExt.contains(ext) -> "AUDIO"
-                else -> return@forEach
+                // previously unknown extensions were ignored; include them under "OTH" so all files are discovered
+                else -> "OTH"
             }
 
             val lastMod = Date(file.lastModified())

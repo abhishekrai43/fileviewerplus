@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,12 +36,16 @@ import java.io.File
 @Composable
 fun VaultScreen(
     onBack: () -> Unit,
-    onOpenFolder: (File) -> Unit
+    onOpenFolder: (File) -> Unit,
+    // If true, open notes view immediately
+    initialShowNotes: Boolean = false,
+    // If true, open notes view and immediately open the new-note creation dialog
+    initialShowCreateNote: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val vaultRoot = File(context.filesDir, ".vault").apply { mkdirs() }
-    var showNotes by remember { mutableStateOf(false) }
+    var showNotes by remember { mutableStateOf(initialShowNotes || initialShowCreateNote) }
 
 
     val uploadLauncher =
@@ -67,35 +72,39 @@ fun VaultScreen(
     val showSetupPin = !hasPin && !unlocked
 
 
-    val shouldShowVault = hasPin && unlocked
-
     val importLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             uris.forEach { uri -> importFileToVault(context, uri, vaultRoot) }
             refreshVault()
         }
 
-    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            backupMode = VaultBackupMode.RESTORE
-            scope.launch {
-                val result = restoreVaultFromZip(context, uri, vaultRoot)
-                backupMode = null
+    val restoreLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                backupMode = VaultBackupMode.RESTORE
+                scope.launch {
+                    val result = restoreVaultFromZip(context, uri, vaultRoot)
+                    backupMode = null
 
-                when (result) {
-                    is VaultRestoreManager.RestoreResult.Success -> {
-                        Toast.makeText(context, "Vault restored from backup!", Toast.LENGTH_LONG).show()
-                        refreshVault()
-                    }
-                    is VaultRestoreManager.RestoreResult.Failure -> {
-                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    when (result) {
+                        is VaultRestoreManager.RestoreResult.Success -> {
+                            Toast.makeText(
+                                context,
+                                "Vault restored from backup!",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            refreshVault()
+                        }
+
+                        is VaultRestoreManager.RestoreResult.Failure -> {
+                            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
+            } else {
+                Toast.makeText(context, "No backup selected", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(context, "No backup selected", Toast.LENGTH_SHORT).show()
         }
-    }
 
 
 
@@ -128,10 +137,13 @@ fun VaultScreen(
                                 Icon(Icons.Default.Add, contentDescription = "Import Files")
                             }
                             IconButton(onClick = { showCreateFolder = true }) {
-                                Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
+                                Icon(
+                                    Icons.Default.CreateNewFolder,
+                                    contentDescription = "New Folder"
+                                )
                             }
                             IconButton(onClick = { showNotes = true }) {
-                                Icon(Icons.Default.StickyNote2, contentDescription = "Vault Notes")
+                                Icon(Icons.AutoMirrored.Filled.StickyNote2, contentDescription = "Vault Notes")
                             }
                         }
                     }
@@ -142,219 +154,292 @@ fun VaultScreen(
 
     ) { padding ->
         if (showNotes) {
-            VaultNotesScreen(onBack = { showNotes = false })
+            VaultNotesScreen(onBack = { showNotes = false }, initialCreate = initialShowCreateNote)
         } else {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            when (backupMode) {
-                VaultBackupMode.BACKUP -> AlertDialog(
-                    onDismissRequest = {},
-                    confirmButton = {},
-                    title = { Text("Preparing Backup") },
-                    text = { Text("Encrypting vault and preparing upload. Please wait...") }
-                )
-
-                VaultBackupMode.RESTORE -> AlertDialog(
-                    onDismissRequest = {},
-                    confirmButton = {},
-                    title = { Text("Restoring Backup") },
-                    text = { Text("Decrypting vault and restoring files. Please wait...") }
-                )
-
-                else -> {}
-            }
-
-
-            when {
-                showSetupPin -> {
-                    SetupPinDialog(
-                        onPinSet = { pin ->
-                            storePin(context, pin)
-                            hasPin = true
-                            unlocked = true
-                        },
-                        onCancel = onBack
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            ) {
+                when (backupMode) {
+                    VaultBackupMode.BACKUP -> AlertDialog(
+                        onDismissRequest = {},
+                        confirmButton = {},
+                        title = { Text("Preparing Backup") },
+                        text = { Text("Encrypting vault and preparing upload. Please wait...") }
                     )
 
+                    VaultBackupMode.RESTORE -> AlertDialog(
+                        onDismissRequest = {},
+                        confirmButton = {},
+                        title = { Text("Restoring Backup") },
+                        text = { Text("Decrypting vault and restoring files. Please wait...") }
+                    )
+
+                    else -> {}
                 }
 
-                !unlocked -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        ElevatedButton(
-                            onClick = { showEnterPin = true },
-                            modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .height(52.dp),
-                            colors = ButtonDefaults.elevatedButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Lock, contentDescription = null)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Unlock Vault", style = MaterialTheme.typography.labelLarge)
-                        }
 
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            "Your files are securely stored here. Unlock to access encrypted content.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                when {
+                    showSetupPin -> {
+                        SetupPinDialog(
+                            onPinSet = { pin ->
+                                storePin(context, pin)
+                                hasPin = true
+                                unlocked = true
+                            },
+                            onCancel = onBack
                         )
-                    }
-                }
 
-                else -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Top
-                    ) {
-                        if (vaultItems.isEmpty()) {
-                            Column(
+                    }
+
+                    !unlocked -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            ElevatedButton(
+                                onClick = { showEnterPin = true },
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                                    .fillMaxWidth(0.75f)
+                                    .height(52.dp),
+                                colors = ButtonDefaults.elevatedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 6.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.FolderOff,
-                                    contentDescription = null,
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    "Vault is empty",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    "Tap below to create a folder or use '+' to import files.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
-                                )
-                                Spacer(modifier = Modifier.height(24.dp))
-                                ElevatedButton(
-                                    onClick = { showCreateFolder = true },
+                                Icon(Icons.Default.Lock, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Unlock Vault", style = MaterialTheme.typography.labelLarge)
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                "Your files are securely stored here. Unlock to access encrypted content.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            )
+                        }
+                    }
+
+                    else -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Top
+                        ) {
+                            if (vaultItems.isEmpty()) {
+                                Column(
                                     modifier = Modifier
-                                        .fillMaxWidth(0.65f)
-                                        .height(48.dp),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.FolderOff,
+                                        contentDescription = null,
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        "Vault is empty",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Tap below to create a folder or use '+' to import files.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    ElevatedButton(
+                                        onClick = { showCreateFolder = true },
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.65f)
+                                            .height(48.dp),
+                                        colors = ButtonDefaults.elevatedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondary,
+                                            contentColor = MaterialTheme.colorScheme.onSecondary
+                                        )
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CreateNewFolder,
+                                            contentDescription = null
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Create Folder")
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    ElevatedButton(
+                                        onClick = { restoreLauncher.launch(arrayOf("application/zip")) },
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.65f)
+                                            .height(64.dp),
+                                        colors = ButtonDefaults.elevatedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.Restore, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+
+                                        Text("Recover from Backup")
+                                    }
+                                    Spacer(modifier = Modifier.height(32.dp))
+                                }
+                            } else {
+                                LazyColumn(
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    items(vaultItems, key = { it.absolutePath }) { file ->
+                                        if (file.isDirectory) {
+                                            VaultFolderCard(
+                                                folder = file,
+                                                onOpen = { onOpenFolder(file) },
+                                                onRenameRequest = { renameTarget = file },
+                                                onDeleteConfirmed = {
+                                                    file.deleteRecursively()
+                                                    refreshVault()
+                                                },
+                                                onZipAndShare = {
+                                                    val zip = ZipUtils.createZip(
+                                                        context,
+                                                        file.name,
+                                                        file.listFiles()?.map { it.toFileNode() }
+                                                            .orEmpty()
+                                                    )
+
+                                                    zip?.let { ZipUtils.shareZip(context, it) }
+                                                }
+                                            )
+                                        } else {
+                                            VaultFileCard(file = file, onFileChanged = refreshVault)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(28.dp))
+
+                                ElevatedButton(
+                                    onClick = { showBackupPicker = true },
+                                    modifier = Modifier
+                                        .align(Alignment.CenterHorizontally)
+                                        .fillMaxWidth(0.85f)
+                                        .height(50.dp),
                                     colors = ButtonDefaults.elevatedButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondary,
-                                        contentColor = MaterialTheme.colorScheme.onSecondary
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
                                     )
                                 ) {
-                                    Icon(Icons.Default.CreateNewFolder, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Create Folder")
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("1-Click Backup")
                                 }
-                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 ElevatedButton(
                                     onClick = { restoreLauncher.launch(arrayOf("application/zip")) },
                                     modifier = Modifier
-                                        .fillMaxWidth(0.65f)
-                                        .height(64.dp),
+                                        .align(Alignment.CenterHorizontally)
+                                        .fillMaxWidth(0.85f)
+                                        .height(50.dp),
                                     colors = ButtonDefaults.elevatedButtonColors(
                                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
                                 ) {
                                     Icon(Icons.Default.Restore, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text("Recover from Backup")
                                 }
-                                Spacer(modifier = Modifier.height(32.dp))
-                            }
-                        } else {
-                            LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                items(vaultItems, key = { it.absolutePath }) { file ->
-                                    if (file.isDirectory) {
-                                        VaultFolderCard(
-                                            folder = file,
-                                            onOpen = { onOpenFolder(file) },
-                                            onRenameRequest = { renameTarget = file },
-                                            onDeleteConfirmed = {
-                                                file.deleteRecursively()
-                                                refreshVault()
-                                            },
-                                            onZipAndShare = {
-                                                val zip = ZipUtils.createZip(
-                                                    context,
-                                                    file.name,
-                                                    file.listFiles()?.map { it.toFileNode() }.orEmpty()
-                                                )
-
-                                                zip?.let { ZipUtils.shareZip(context, it) }
-                                            }
-                                        )
-                                    } else {
-                                        VaultFileCard(file = file, onFileChanged = refreshVault)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(28.dp))
-
-                            ElevatedButton(
-                                onClick = { showBackupPicker = true }
-
-,
-                                modifier = Modifier
-                                    .align(Alignment.CenterHorizontally)
-                                    .fillMaxWidth(0.85f)
-                                    .height(50.dp),
-                                colors = ButtonDefaults.elevatedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            ) {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("1-Click Backup")
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            ElevatedButton(
-                                onClick = { restoreLauncher.launch(arrayOf("application/zip")) },
-                                modifier = Modifier
-                                    .align(Alignment.CenterHorizontally)
-                                    .fillMaxWidth(0.85f)
-                                    .height(50.dp),
-                                colors = ButtonDefaults.elevatedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            ) {
-                                Icon(Icons.Default.Restore, contentDescription = null)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Recover from Backup")
                             }
                         }
                     }
                 }
+
+                if (showEnterPin) {
+                    EnterPinDialog(
+                        onPinEntered = {
+                            if (it == getStoredPin(context)) {
+                                unlocked = true
+                                showEnterPin = false
+                            } else {
+                                Toast.makeText(context, "Incorrect PIN", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onDismiss = { showEnterPin = false },
+                        onForgotPin = {
+                            showEnterPin = false
+                            showForgotDialog = true
+                        }
+                    )
+                }
+
+                if (showForgotDialog) {
+                    ForgotPinDialog(
+                        onRecover = {
+                            showForgotDialog = false
+                            showRecoverDialog = true
+                        },
+                        onDismiss = { showForgotDialog = false }
+                    )
+                }
+
+                if (showRecoverDialog) {
+                    RecoverPinDialog(
+                        onRecovered = { showRecoverDialog = false },
+                        onDismiss = { showRecoverDialog = false }
+                    )
+                }
+
+                renameTarget?.let { file ->
+                    ShowRenameDialog(
+                        context = context,
+                        file = file,
+                        onSuccess = {
+                            refreshVault()
+                            renameTarget = null
+                        },
+                        onDismiss = { renameTarget = null }
+                    )
+                }
             }
+
+            if (showCreateFolder) {
+                CreateFolderDialog(
+                    onCreate = { folderName ->
+                        showCreateFolder = false
+                        val success = VaultUtils.createFolderIfNotExists(vaultRoot, folderName)
+                        if (success) {
+                            Toast.makeText(context, "Folder created", Toast.LENGTH_SHORT).show()
+                            refreshVault()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Invalid or existing folder",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    onDismiss = { showCreateFolder = false }
+                )
+            }
+
+
+
 
             if (showEnterPin) {
                 EnterPinDialog(
-                    onPinEntered = {
-                        if (it == getStoredPin(context)) {
+                    onPinEntered = { input ->
+                        if (input == getStoredPin(context)) {
                             unlocked = true
                             showEnterPin = false
                         } else {
@@ -368,73 +453,6 @@ fun VaultScreen(
                     }
                 )
             }
-
-            if (showForgotDialog) {
-                ForgotPinDialog(
-                    onRecover = {
-                        showForgotDialog = false
-                        showRecoverDialog = true
-                    },
-                    onDismiss = { showForgotDialog = false }
-                )
-            }
-
-            if (showRecoverDialog) {
-                RecoverPinDialog(
-                    onRecovered = { showRecoverDialog = false },
-                    onDismiss = { showRecoverDialog = false }
-                )
-            }
-
-            renameTarget?.let { file ->
-                ShowRenameDialog(
-                    context = context,
-                    file = file,
-                    onSuccess = {
-                        refreshVault()
-                        renameTarget = null
-                    },
-                    onDismiss = { renameTarget = null }
-                )
-            }
-        }
-
-        if (showCreateFolder) {
-            CreateFolderDialog(
-                onCreate = { folderName ->
-                    showCreateFolder = false
-                    val success = VaultUtils.createFolderIfNotExists(vaultRoot, folderName)
-                    if (success) {
-                        Toast.makeText(context, "Folder created", Toast.LENGTH_SHORT).show()
-                        refreshVault()
-                    } else {
-                        Toast.makeText(context, "Invalid or existing folder", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onDismiss = { showCreateFolder = false }
-            )
-        }
-
-
-
-
-        if (showEnterPin) {
-            EnterPinDialog(
-                onPinEntered = { input ->
-                    if (input == getStoredPin(context)) {
-                        unlocked = true
-                        showEnterPin = false
-                    } else {
-                        Toast.makeText(context, "Incorrect PIN", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onDismiss = { showEnterPin = false },
-                onForgotPin = {
-                    showEnterPin = false
-                    showForgotDialog = true
-                }
-            )
-        }
             if (showBackupPicker) {
                 VaultBackupPickerDialog(
                     context = context,
@@ -467,16 +485,14 @@ fun VaultScreen(
             }
 
 
-
-
         }
-}
-fun File.toFileNode(): FileNode = FileNode(
-    name = name,
-    path = absolutePath,
-    type = FileNode.FileType.fromExtension(extension),
-    size = length(),
-    lastModified = lastModified()
-    )
+    }
 }
 
+    fun File.toFileNode(): FileNode = FileNode(
+        name = name,
+        path = absolutePath,
+        type = FileNode.FileType.fromExtension(extension),
+        size = length(),
+        lastModified = lastModified()
+    )

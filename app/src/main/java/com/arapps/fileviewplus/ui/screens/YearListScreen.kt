@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -14,6 +15,10 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,14 +33,23 @@ import androidx.core.content.ContextCompat
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 import com.arapps.fileviewplus.logic.StorageStats
 import com.arapps.fileviewplus.model.FileNode
-import com.arapps.fileviewplus.ui.components.FolderActionsMenu
-import com.arapps.fileviewplus.ui.components.GalleryDialog
 import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.ui.components.FolderActionsMenu
+import com.arapps.fileviewplus.viewer.ViewerRouter
 import com.arapps.fileviewplus.viewer.ImageViewerActivity.Companion.ACTION_FILE_DELETED
 import java.io.File
-
+import com.arapps.fileviewplus.utils.getStoredPin
+import com.arapps.fileviewplus.utils.copyFilesToVaultAsync
+import com.arapps.fileviewplus.utils.DeletionManager
+import com.arapps.fileviewplus.ui.components.vault.EnterPinDialog
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.material3.ExperimentalMaterial3Api
 
 @SuppressLint("NewApi")
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun YearListScreen(
     category: FileNode.Category,
@@ -45,6 +59,14 @@ fun YearListScreen(
     val years = remember { mutableStateListOf<FileNode.Year>().apply { addAll(category.years) } }
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    // Selection state (support multi-select when viewing flat file list)
+    val selected = remember { mutableStateListOf<String>() }
+    var showSelectionToolbar by remember { mutableStateOf(false) }
+    var showEnterPin by remember { mutableStateOf(false) }
+    var showChooseVaultFolder by remember { mutableStateOf(false) }
+    val uiScope = rememberCoroutineScope()
+    val vaultRoot = File(context.filesDir, ".vault").apply { mkdirs() }
+
     // flat-list toggle + gallery state
     var showFlatFiles by rememberSaveable { mutableStateOf(false) }
     val allYearFiles = remember { mutableStateListOf<FileNode>().apply { addAll(years.flatMap { y -> y.months.flatMap { m -> m.days.flatMap { d -> d.files } } }) } }
@@ -53,9 +75,6 @@ fun YearListScreen(
         allYearFiles.clear()
         allYearFiles.addAll(flat)
     }
-
-    var galleryOpen by rememberSaveable { mutableStateOf(false) }
-    var galleryStartIndex by rememberSaveable { mutableStateOf(0) }
 
     // Listen for delete broadcasts
     DisposableEffect(Unit) {
@@ -96,6 +115,30 @@ fun YearListScreen(
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         onDispose { try { context.unregisterReceiver(receiver) } catch (_: Exception) {} }
+    }
+
+    // helper to attempt delete originals after copy
+    suspend fun attemptDeleteOriginals() {
+        selected.toList().forEach { p ->
+            try {
+                val node = FileNode.fromFile(File(p))
+                when (val res = DeletionManager.deleteFile(context, node)) {
+                    DeletionManager.DeleteResult.Deleted -> {
+                        // removed via broadcast elsewhere
+                    }
+                    is DeletionManager.DeleteResult.NeedUserGrant -> {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Cannot delete automatically: permission needed for $p", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    is DeletionManager.DeleteResult.Failed -> {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Delete failed: ${res.reason}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     // Ensure the Year screen respects the app theme background (was showing as always dark
@@ -175,19 +218,33 @@ fun YearListScreen(
                 }
             } else {
                 items(allYearFiles, key = { it.path }) { file ->
-                    val idx = allYearFiles.indexOf(file)
+                    val isSelected = selected.contains(file.path)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clickable {
-                                galleryStartIndex = idx
-                                galleryOpen = true
-                            },
-                        elevation = CardDefaults.cardElevation(3.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
+                                if (selected.isNotEmpty()) {
+                                    if (isSelected) selected.remove(file.path) else selected.add(file.path)
+                                    showSelectionToolbar = selected.isNotEmpty()
+                                } else {
+                                    ViewerRouter.openFile(context, file, fromVault = false)
+                                }
+                            }.combinedClickable(onClick = {
+                                if (selected.isNotEmpty()) {
+                                    if (isSelected) selected.remove(file.path) else selected.add(file.path)
+                                    showSelectionToolbar = selected.isNotEmpty()
+                                } else {
+                                    ViewerRouter.openFile(context, file, fromVault = false)
+                                }
+                            }, onLongClick = {
+                                if (!isSelected) selected.add(file.path)
+                                showSelectionToolbar = true
+                            }),
+                         elevation = CardDefaults.cardElevation(3.dp),
+                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                         shape = MaterialTheme.shapes.medium
+                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             FilePreviewThumbnail(
                                 file = File(file.path),
@@ -236,9 +293,59 @@ fun YearListScreen(
             }
         }
 
-        // Full-screen gallery dialog moved outside the LazyVerticalGrid
-        if (galleryOpen) {
-            GalleryDialog(files = allYearFiles, startIndex = galleryStartIndex, onClose = { galleryOpen = false })
+        // Selection toolbar at top (show when user has selected files)
+        if (showSelectionToolbar && selected.isNotEmpty()) {
+            TopAppBar(
+                title = { Text("${selected.size} selected") },
+                navigationIcon = { IconButton(onClick = { selected.clear(); showSelectionToolbar = false }) { Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel selection") } },
+                actions = {
+                    IconButton(onClick = {
+                        // Share first selected
+                        val uris = selected.mapNotNull { p ->
+                            try { androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".provider", File(p)) } catch (_: Exception) { null }
+                        }
+                        if (uris.isNotEmpty()) {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "*/*"
+                                putExtra(Intent.EXTRA_STREAM, uris.first())
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share files"))
+                        }
+                    }) { Icon(imageVector = Icons.Filled.Share, contentDescription = "Share") }
+
+                    IconButton(onClick = { showEnterPin = true }) { Icon(imageVector = Icons.Filled.Lock, contentDescription = "Move to Vault") }
+
+                    IconButton(onClick = {
+                        uiScope.launch {
+                            attemptDeleteOriginals()
+                            selected.clear(); showSelectionToolbar = false
+                        }
+                    }) { Icon(Icons.Filled.Delete, contentDescription = "Delete") }
+                }
+            )
+        }
+
+        if (showEnterPin) {
+            EnterPinDialog(onPinEntered = { pin -> if (pin == getStoredPin(context)) { showEnterPin = false; showChooseVaultFolder = true } else android.widget.Toast.makeText(context, "Incorrect PIN", android.widget.Toast.LENGTH_SHORT).show() }, onDismiss = { showEnterPin = false }, onForgotPin = {})
+        }
+
+        if (showChooseVaultFolder) {
+            val folders = vaultRoot.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+            var selectedFolder by remember { mutableStateOf(folders.firstOrNull() ?: "") }
+            AlertDialog(onDismissRequest = { showChooseVaultFolder = false }, title = { Text("Select Vault Folder") }, text = {
+                Column { folders.forEach { name -> Row(modifier = Modifier.fillMaxWidth().clickable { selectedFolder = name }.padding(8.dp)) { RadioButton(selected = selectedFolder == name, onClick = { selectedFolder = name }); Spacer(Modifier.width(8.dp)); Text(name) } } }
+            }, confirmButton = {
+                TextButton(onClick = {
+                    val dest = if (selectedFolder.isBlank()) vaultRoot else File(vaultRoot, selectedFolder)
+                    uiScope.launch {
+                        val copied = copyFilesToVaultAsync(context, selected.toList(), dest)
+                        withContext(Dispatchers.Main) { android.widget.Toast.makeText(context, "${copied.size} file(s) copied to vault", android.widget.Toast.LENGTH_SHORT).show() }
+                        attemptDeleteOriginals()
+                        selected.clear(); showSelectionToolbar = false; showChooseVaultFolder = false
+                    }
+                }) { Text("Move") }
+            }, dismissButton = { TextButton(onClick = { showChooseVaultFolder = false }) { Text("Cancel") } })
         }
     }
  }

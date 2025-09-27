@@ -33,6 +33,7 @@ import com.arapps.fileviewplus.viewer.ViewerRouter
 import java.io.File
 import androidx.compose.ui.platform.LocalContext
 import com.arapps.fileviewplus.ui.components.FilePreviewThumbnail
+import com.arapps.fileviewplus.logic.StorageStats
 
 /**
  * FileListScreen
@@ -186,7 +187,7 @@ fun FileListScreen(day: FileNode.Day, onBack: () -> Unit) {
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 Text(
-                                    text = "${file.size / 1024} KB",
+                                    text = StorageStats.formatSize(file.size),
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }

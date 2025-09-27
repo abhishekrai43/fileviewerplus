@@ -11,32 +11,96 @@ import java.io.File
 
 object ViewerRouter {
 
+    // Lists of extensions mapped to internal viewers or to generic handling.
+    private val imageExts = setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "bmp")
+    private val textExts = setOf("txt", "log", "json", "xml", "md", "csv", "html", "htm", "srt", "vtt")
+    private val videoExts = setOf("mp4", "mkv", "avi", "mov", "webm", "3gp")
+    private val audioExts = setOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr", "opus", "wma")
+    private val pdfExts = setOf("pdf")
+    private val officeDocx = setOf("docx", "doc")
+    private val officeSheets = setOf("xlsx", "xls", "csv")
+    private val officeSlides = setOf("pptx", "ppt")
+    private val archiveExts = setOf("zip", "tar", "gz", "7z", "rar")
+    // E-book extensions – no in-app viewer, open externally where a reader app exists
+    private val ebookExts = setOf("epub", "mobi", "azw", "azw3", "kf8", "fb2", "pdb", "lit", "prc")
+
     fun openFile(context: Context, fileNode: FileNode, fromVault: Boolean) {
         val ext = fileNode.extension.lowercase()
         when {
-            ext == "pdf" -> PdfViewerActivity.launch(context, fileNode, fromVault)
-            ext in listOf("jpg", "jpeg", "png", "webp") -> ImageViewerActivity.launch(context, fileNode, fromVault)
-            ext in listOf("txt", "log", "json", "xml", "md") -> TextViewerActivity.launch(context, fileNode, fromVault)
-            ext in listOf("mp4", "mkv", "avi", "mov") -> VideoViewerActivity.launch(context, fileNode, fromVault)
-            // audio: play in-app inline via PlaybackController instead of opening a full-screen activity
-            ext in listOf("mp3", "wav", "aac", "ogg", "flac", "m4a", "amr") -> {
+            ext in pdfExts -> PdfViewerActivity.launch(context, fileNode, fromVault)
+            ext in imageExts -> ImageViewerActivity.launch(context, fileNode, fromVault)
+            ext in textExts -> TextViewerActivity.launch(context, fileNode, fromVault)
+            ext in videoExts -> VideoViewerActivity.launch(context, fileNode, fromVault)
+            ext in audioExts -> {
+                // audio: prefer inline playback via PlaybackController, fallback to an activity
                 try {
                     PlaybackController.play(fileNode)
                 } catch (_: Exception) {
-                    // fallback to audio activity if PlaybackController fails
                     try { AudioViewerActivity.launch(context, fileNode, fromVault) } catch (_: Exception) {}
                 }
             }
-            ext == "docx" -> openDocxExternally(context, File(fileNode.path)) // ✅ DOCX support
+            // In-app ebook support where feasible
+            ext == "epub" -> {
+                try {
+                    EpubViewerActivity.launch(context, fileNode, fromVault)
+                } catch (_: Exception) {
+                    // fallback to external open
+                    openExternally(context, File(fileNode.path), inferMime(ext) ?: "application/octet-stream")
+                }
+            }
+            ext == "fb2" -> {
+                try {
+                    Fb2ViewerActivity.launch(context, fileNode, fromVault)
+                } catch (_: Exception) {
+                    openExternally(context, File(fileNode.path), inferMime(ext) ?: "application/octet-stream")
+                }
+            }
+            ext in ebookExts -> {
+                // Other ebook formats: try an in-app fallback viewer that provides preview + external open option
+                try {
+                    EbookFallbackActivity.launch(context, fileNode, fromVault)
+                } catch (_: Exception) {
+                    openExternally(context, File(fileNode.path), inferMime(ext) ?: "application/octet-stream")
+                }
+            }
+            ext in officeDocx -> {
+                // prefer lightweight in-app preview when available
+                try {
+                    DocxPreviewActivity.launch(context, fileNode.path)
+                } catch (_: Exception) {
+                    openExternally(context, File(fileNode.path), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                }
+            }
+            ext in officeSheets -> {
+                // Sheets: show quick preview for CSV/XLSX if available, else external
+                if (ext == "csv") {
+                    try { CsvPreviewActivity.launch(context, fileNode.path) } catch (_: Exception) { TextViewerActivity.launch(context, fileNode, fromVault) }
+                } else {
+                    openExternally(context, File(fileNode.path), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                }
+            }
+            ext in officeSlides -> {
+                openExternally(context, File(fileNode.path), "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+            }
+            ext in archiveExts -> {
+                // Archives: prefer lightweight internal listing preview, fallback to external
+                try {
+                    ZipViewerActivity.launch(context, fileNode.path)
+                } catch (_: Exception) {
+                    openExternally(context, File(fileNode.path), "application/zip")
+                }
+            }
             else -> {
-                // Try a best-effort external open with inferred mime type, fallback to chooser or show unsupported
+                // Best-effort external open with inferred mime type
                 openExternally(context, File(fileNode.path), inferMime(ext))
             }
         }
     }
 
-    private fun openDocxExternally(context: Context, file: File) {
-        openExternally(context, file, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    // Public helper to allow callers to ask if extension has an internal viewer available
+    fun hasInternalViewerForExtension(extRaw: String): Boolean {
+        val ext = extRaw.lowercase()
+        return ext in pdfExts || ext in imageExts || ext in textExts || ext in videoExts || ext in audioExts || ext in archiveExts || ext in ebookExts
     }
 
     private fun openExternally(context: Context, file: File, mime: String?) {
@@ -59,19 +123,6 @@ object ViewerRouter {
         }
     }
 
-    private fun getAudioMime(ext: String): String {
-        return when (ext) {
-            "mp3" -> "audio/mpeg"
-            "wav" -> "audio/wav"
-            "aac" -> "audio/aac"
-            "ogg" -> "audio/ogg"
-            "flac" -> "audio/flac"
-            "m4a" -> "audio/mp4"
-            "amr" -> "audio/amr"
-            else -> "audio/*"
-        }
-    }
-
     private fun inferMime(ext: String): String? {
         return when (ext) {
             "pdf" -> "application/pdf"
@@ -80,6 +131,14 @@ object ViewerRouter {
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
             "mp4" -> "video/mp4"
+            "zip" -> "application/zip"
+            "csv" -> "text/csv"
+            // E-book MIME types (best-effort)
+            "epub" -> "application/epub+zip"
+            "mobi" -> "application/x-mobipocket-ebook"
+            "azw", "azw3", "kf8" -> "application/vnd.amazon.ebook"
+            "fb2" -> "application/xml"
+            "pdb", "prc", "lit" -> "application/octet-stream"
             else -> null
         }
     }

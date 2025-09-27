@@ -6,9 +6,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -51,7 +55,10 @@ fun FileViewApp(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var hasPermission by remember { mutableStateOf(checkStoragePermission()) }
+    // keep a local used value to avoid an 'unused parameter' warning while preserving the API
+    // (parameter intentionally unused in this scope)
+
+    val hasPermission by remember { mutableStateOf(checkStoragePermission()) }
     var fileStructure by remember { mutableStateOf<List<FileNode.Category>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     val nav = remember { mutableStateOf(NavigationState()) }
@@ -73,12 +80,12 @@ fun FileViewApp(
         }
     }
 
-    fun refreshFiles() {
+    fun refreshFiles(force: Boolean = false) {
         isLoading = true
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    if (FileScanner.shouldScan(context)) {
+                    if (force || FileScanner.shouldScan(context)) {
                         FileScanner.scanAndCache(context)
                     } else {
                         FileScanner.loadFromCache(context)
@@ -119,6 +126,48 @@ fun FileViewApp(
 
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         onDispose { try { context.unregisterReceiver(receiver) } catch (_: Exception) {} }
+    }
+
+    // Watch MediaStore for changes so newly created photos/audio/videos are picked up promptly
+    DisposableEffect(hasPermission) {
+        if (!hasPermission) {
+            onDispose { }
+        } else {
+            val resolver = context.contentResolver
+            val handler = Handler(Looper.getMainLooper())
+            val debounceDelay = 1000L
+            val refreshRunnable = Runnable { refreshFiles(force = true) }
+            val observer = object : ContentObserver(handler) {
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    super.onChange(selfChange, uri)
+                    // Debounce rapid MediaStore events — cancel previous and schedule a single refresh
+                    try {
+                        handler.removeCallbacks(refreshRunnable)
+                        handler.postDelayed(refreshRunnable, debounceDelay)
+                    } catch (_: Exception) {
+                        // fallback to immediate refresh if handler fails
+                        refreshFiles(force = true)
+                    }
+                }
+            }
+
+            // Register observers for images, video, audio and general files
+            try {
+                resolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer)
+                resolver.registerContentObserver(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, observer)
+                resolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, observer)
+                resolver.registerContentObserver(MediaStore.Files.getContentUri("external"), true, observer)
+            } catch (e: Exception) {
+                // ignore - some devices may restrict observers
+            }
+
+            onDispose {
+                try {
+                    resolver.unregisterContentObserver(observer)
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     LaunchedEffect(hasPermission) {
@@ -189,20 +238,23 @@ fun FileViewApp(
         )
         nav.value.showVault -> VaultScreen(
             onBack = { nav.value = NavigationState() },
-            onOpenFolder = { nav.value = nav.value.copy(vaultFolder = it) }
+            onOpenFolder = { nav.value = nav.value.copy(vaultFolder = it) },
+            initialShowNotes = nav.value.showVaultNotes
         )
         else -> CategoryListScreen(
-            categories = fileStructure,
-            onSelect = { nav.value = nav.value.copy(category = it) },
-            onSearch = { nav.value = nav.value.copy(showFileTypeExplorer = true) },
-            onToggleView = {
+            fileStructure,
+            { nav.value = nav.value.copy(category = it) },
+            { nav.value = nav.value.copy(showFileTypeExplorer = true) },
+            {
                 Toast.makeText(context, "Toggle view not implemented", Toast.LENGTH_SHORT).show()
             },
-            onGoHome = { nav.value = NavigationState() },
-            isDarkMode = isDarkMode,
-            onToggleTheme = onToggleTheme,
-            onVaultClick = { nav.value = nav.value.copy(showVault = true) },
-            nav = nav
+            { nav.value = NavigationState() },
+            isDarkMode,
+            onToggleTheme,
+            { nav.value = nav.value.copy(showVault = true) },
+            nav,
+            { refreshFiles(force = true) },
+            isLoading
         )
     }
 

@@ -57,15 +57,25 @@ fun FolderActionsMenu(
                     coroutineScope.launch(Dispatchers.IO) {
                         val firstPath = files.firstOrNull()?.path
                         val folder = firstPath?.let { File(it).parentFile }
-                        val deleted = folder?.takeIf { it.exists() && it.isDirectory }
-                            ?.deleteRecursively() == true
+                        // Protect the app's vault directory from accidental deletion
+                        val vaultRoot = File(context.filesDir, ".vault")
+                        val isVaultTarget = folder?.canonicalPath?.startsWith(vaultRoot.canonicalPath ?: "") == true
+                        val deleted = if (isVaultTarget) {
+                            false
+                        } else {
+                            folder?.takeIf { it.exists() && it.isDirectory }?.deleteRecursively() == true
+                        }
 
                         withContext(Dispatchers.Main) {
                             if (deleted) {
                                 Toast.makeText(context, "Folder deleted", Toast.LENGTH_SHORT).show()
                                 onDeleted?.invoke()
                             } else {
-                                Toast.makeText(context, "Failed to delete folder", Toast.LENGTH_SHORT).show()
+                                if (isVaultTarget) {
+                                    Toast.makeText(context, "Refusing to delete vault contents from this menu", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Failed to delete folder", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     }
