@@ -100,7 +100,8 @@ fun CategoryListScreen(
     // Generate suggestions
     val oldFiles = remember(insights.value) { FileAnalytics.getOldFiles(insights.value, 180) }
     val largeFiles = remember(insights.value) { FileAnalytics.getLargeFiles(insights.value, 200) }
-    val duplicateFiles = remember(insights.value) { FileAnalytics.getDuplicateFiles(insights.value) }
+    val duplicateFiles =
+        remember(insights.value) { FileAnalytics.getDuplicateFiles(insights.value) }
 
     val suggestions = listOfNotNull(
         oldFiles.takeIf { it.isNotEmpty() }?.let { old ->
@@ -206,7 +207,11 @@ fun CategoryListScreen(
                         Toast.makeText(context, "Server stopped", Toast.LENGTH_SHORT).show()
                     } else {
                         if (!isOnWifi(context)) {
-                            Toast.makeText(context, "Connect to Wi-Fi to start server", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "Connect to Wi-Fi to start server",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             return@BottomBarActions
                         }
                         ipAddress.value = getLocalIpAddress()
@@ -234,7 +239,10 @@ fun CategoryListScreen(
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_SUBJECT, "Try FileFlow Plus")
-                        putExtra(Intent.EXTRA_TEXT, "Check out this awesome file manager:\nhttps://play.google.com/store/apps/details?id=com.arapps.fileviewplus")
+                        putExtra(
+                            Intent.EXTRA_TEXT,
+                            "Check out this awesome file manager:\nhttps://play.google.com/store/apps/details?id=com.arapps.fileviewplus"
+                        )
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share via"))
                 },
@@ -243,9 +251,11 @@ fun CategoryListScreen(
         }
     ) { innerPadding ->
         // Wrap everything in a Column that respects Scaffold padding so the bottomBar is accounted for.
-        Column(modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding), verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             // Define the summary keys/colors/extension fallbacks used by the cards and filtering
             val keyToDisplay = listOf(
                 Triple("IMG", FileCategory.IMAGE, "Images"),
@@ -324,7 +334,11 @@ fun CategoryListScreen(
                     "AUDIO" to insights.value.count { isAudioFile(it.file) },
                     "DOC" to insights.value.count { isDocumentFile(it.file) },
                     // OTH: files not matching image/video/audio/document
-                    "OTH" to insights.value.count { !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(it.file) && !isAudioFile(it.file) }
+                    "OTH" to insights.value.count {
+                        !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(
+                            it.file
+                        ) && !isAudioFile(it.file)
+                    }
                 )
             }
 
@@ -334,7 +348,11 @@ fun CategoryListScreen(
                     "VID" to insights.value.filter { isVideoFile(it.file) }.sumOf { it.size },
                     "AUDIO" to insights.value.filter { isAudioFile(it.file) }.sumOf { it.size },
                     "DOC" to insights.value.filter { isDocumentFile(it.file) }.sumOf { it.size },
-                    "OTH" to insights.value.filter { !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(it.file) && !isAudioFile(it.file) }.sumOf { it.size }
+                    "OTH" to insights.value.filter {
+                        !isImageFile(it.file) && !isVideoFile(it.file) && !isDocumentFile(
+                            it.file
+                        ) && !isAudioFile(it.file)
+                    }.sumOf { it.size }
                 )
             }
 
@@ -349,7 +367,12 @@ fun CategoryListScreen(
                 }
                 return mediaStats.value.firstOrNull { ms ->
                     val name = ms.name
-                    synonyms.any { syn -> name.equals(syn, ignoreCase = true) || name.contains(syn, ignoreCase = true) }
+                    synonyms.any { syn ->
+                        name.equals(syn, ignoreCase = true) || name.contains(
+                            syn,
+                            ignoreCase = true
+                        )
+                    }
                 }?.totalBytes ?: 0L
             }
 
@@ -363,17 +386,62 @@ fun CategoryListScreen(
                 }
                 return mediaStats.value.firstOrNull { ms ->
                     val name = ms.name
-                    synonyms.any { syn -> name.equals(syn, ignoreCase = true) || name.contains(syn, ignoreCase = true) }
+                    synonyms.any { syn ->
+                        name.equals(syn, ignoreCase = true) || name.contains(
+                            syn,
+                            ignoreCase = true
+                        )
+                    }
                 }?.count ?: 0
             }
 
             val displayStats = remember(bytesByKey, mediaStats.value) {
                 listOf(
-                    StorageStats.Stat("DOC", if ((bytesByKey["DOC"] ?: 0L) == 0L) findMediaTotalFor("DOC") else (bytesByKey["DOC"] ?: 0L), if ((countsByKey["DOC"] ?: 0) == 0) findMediaCountFor("DOC") else (countsByKey["DOC"] ?: 0)),
-                    StorageStats.Stat("IMG", if ((bytesByKey["IMG"] ?: 0L) == 0L) findMediaTotalFor("IMG") else (bytesByKey["IMG"] ?: 0L), if ((countsByKey["IMG"] ?: 0) == 0) findMediaCountFor("IMG") else (countsByKey["IMG"] ?: 0)),
-                    StorageStats.Stat("VID", if ((bytesByKey["VID"] ?: 0L) == 0L) findMediaTotalFor("VID") else (bytesByKey["VID"] ?: 0L), if ((countsByKey["VID"] ?: 0) == 0) findMediaCountFor("VID") else (countsByKey["VID"] ?: 0)),
-                    StorageStats.Stat("AUDIO", if ((bytesByKey["AUDIO"] ?: 0L) == 0L) findMediaTotalFor("AUDIO") else (bytesByKey["AUDIO"] ?: 0L), if ((countsByKey["AUDIO"] ?: 0) == 0) findMediaCountFor("AUDIO") else (countsByKey["AUDIO"] ?: 0))
-                    , StorageStats.Stat("OTH", if ((bytesByKey["OTH"] ?: 0L) == 0L) findMediaTotalFor("OTH") else (bytesByKey["OTH"] ?: 0L), if ((countsByKey["OTH"] ?: 0) == 0) findMediaCountFor("OTH") else (countsByKey["OTH"] ?: 0))
+                    StorageStats.Stat(
+                        "DOC",
+                        if ((bytesByKey["DOC"]
+                                ?: 0L) == 0L
+                        ) findMediaTotalFor("DOC") else (bytesByKey["DOC"] ?: 0L),
+                        if ((countsByKey["DOC"]
+                                ?: 0) == 0
+                        ) findMediaCountFor("DOC") else (countsByKey["DOC"] ?: 0)
+                    ),
+                    StorageStats.Stat(
+                        "IMG",
+                        if ((bytesByKey["IMG"]
+                                ?: 0L) == 0L
+                        ) findMediaTotalFor("IMG") else (bytesByKey["IMG"] ?: 0L),
+                        if ((countsByKey["IMG"]
+                                ?: 0) == 0
+                        ) findMediaCountFor("IMG") else (countsByKey["IMG"] ?: 0)
+                    ),
+                    StorageStats.Stat(
+                        "VID",
+                        if ((bytesByKey["VID"]
+                                ?: 0L) == 0L
+                        ) findMediaTotalFor("VID") else (bytesByKey["VID"] ?: 0L),
+                        if ((countsByKey["VID"]
+                                ?: 0) == 0
+                        ) findMediaCountFor("VID") else (countsByKey["VID"] ?: 0)
+                    ),
+                    StorageStats.Stat(
+                        "AUDIO",
+                        if ((bytesByKey["AUDIO"]
+                                ?: 0L) == 0L
+                        ) findMediaTotalFor("AUDIO") else (bytesByKey["AUDIO"] ?: 0L),
+                        if ((countsByKey["AUDIO"]
+                                ?: 0) == 0
+                        ) findMediaCountFor("AUDIO") else (countsByKey["AUDIO"] ?: 0)
+                    ),
+                    StorageStats.Stat(
+                        "OTH",
+                        if ((bytesByKey["OTH"]
+                                ?: 0L) == 0L
+                        ) findMediaTotalFor("OTH") else (bytesByKey["OTH"] ?: 0L),
+                        if ((countsByKey["OTH"]
+                                ?: 0) == 0
+                        ) findMediaCountFor("OTH") else (countsByKey["OTH"] ?: 0)
+                    )
                 )
             }
 
@@ -420,7 +488,7 @@ fun CategoryListScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(displayStats) { stat ->
-                    val pct = if (totalBytesForPct > 0L) (stat.totalBytes * 100 / totalBytesForPct).toInt() else 0
+                    val pct = if (totalBytesForPct > 0L) (stat.totalBytes * 100.0 / totalBytesForPct).toInt() else 0
                     Card(
                         modifier = Modifier
                             .height(36.dp)
@@ -436,14 +504,19 @@ fun CategoryListScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(categoryColorMap[stat.name] ?: MaterialTheme.colorScheme.primary))
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(categoryColorMap[stat.name] ?: MaterialTheme.colorScheme.primary)
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("${stat.name} - ${StorageStats.formatSize(stat.totalBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    if (stat.name == "OTH") "Others - ${StorageStats.formatSize(stat.totalBytes)} ($pct%)" else "${stat.name} - ${StorageStats.formatSize(stat.totalBytes)} ($pct%)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
-                            Text("$pct%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
@@ -492,8 +565,8 @@ fun CategoryListScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Compact summary cards grid (Images, Videos, Audio, Documents) — reduced height so more content fits on screen
-            val summaryKeys = listOf("IMG", "VID", "AUDIO", "DOC")
+            // Main cards grid (Images, Videos, Audio, Documents, Others, Reminder Note)
+            val summaryKeys = listOf("IMG", "VID", "AUDIO", "DOC", "OTH", "REMINDER")
             androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                 columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
                 modifier = Modifier
@@ -504,105 +577,117 @@ fun CategoryListScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(summaryKeys) { key ->
-                    val label = keyToDisplay.find { it.first == key }?.third ?: key
-                    val count = displayCounts[key] ?: (countsByKey[key] ?: 0)
-                    val sizeBytes = displayStats.find { it.name.equals(key, ignoreCase = true) }?.totalBytes ?: (bytesByKey[key] ?: 0L)
+                    if (key == "REMINDER") {
+                        Card(
+                            modifier = Modifier
+                                .height(96.dp)
+                                .fillMaxWidth()
+                                .clickable {
+                                    nav.value = nav.value.copy(
+                                        showVault = true,
+                                        showVaultNotes = true,
+                                        showVaultNotesCreation = true
+                                    )
+                                },
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(12.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.StickyNote2,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Reminders, Notes, Save Passwords",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Create Notes, Reminders etc",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    } else {
+                        val label = keyToDisplay.find { it.first == key }?.third ?: key
+                        val count = displayCounts[key] ?: (countsByKey[key] ?: 0)
+                        val sizeBytes = displayStats.find { it.name.equals(key, ignoreCase = true) }?.totalBytes ?: (bytesByKey[key] ?: 0L)
 
-                    Card(
-                        modifier = Modifier
-                            .height(96.dp)
-                            .fillMaxWidth()
-                            .clickable {
-                                val cat = categories.find { it.name == key }
-                                if (cat != null) onSelect(cat) else {
-                                    val filesForKey = when (key) {
-                                        "IMG" -> allFiles.filter { it.type == FileNode.FileType.Image }
-                                        "VID" -> allFiles.filter { it.type == FileNode.FileType.Video }
-                                        "AUDIO" -> allFiles.filter { it.type == FileNode.FileType.Audio || it.extension in audioExts }
-                                        "DOC" -> allFiles.filter { f ->
-                                            val ext = f.extension.lowercase()
-                                            ext in setOf("pdf", "doc", "docx", "txt")
+                        Card(
+                            modifier = Modifier
+                                .height(96.dp)
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (key == "OTH") {
+                                        // Show all files NOT in IMG, VID, AUDIO, DOC as a flat list
+                                        val filesForOthers = allFiles.filter {
+                                            !isImageFile(it) && !isVideoFile(it) && !isAudioFile(it) && !isDocumentFile(it)
                                         }
-                                        else -> emptyList()
-                                    }
-                                    if (filesForKey.isNotEmpty()) {
-                                        if (key == "AUDIO") {
-                                            filesForKey.firstOrNull()?.let { firstFile -> activeAudio.value = firstFile }
-                                        } else {
+                                        if (filesForOthers.isNotEmpty()) {
                                             nav.value = nav.value.copy(
                                                 showFilteredList = true,
-                                                filteredFiles = filesForKey.map { FileNode.fromFile(File(it.path)) },
-                                                filteredTitle = label
+                                                filteredFiles = filesForOthers,
+                                                filteredTitle = label,
+                                                filterMode = FilterMode.OTHERS
                                             )
                                         }
+                                    } else if (key == "IMG" || key == "VID" || key == "AUDIO" || key == "DOC") {
+                                        // Always navigate to Year/Month/Day view for main categories
+                                        val cat = categories.find { it.name.equals(key, ignoreCase = true) }
+                                            ?: if (key == "AUDIO") categories.find { it.name.equals("HIDDEN_AUDIO", ignoreCase = true) } else null
+                                        if (cat != null) onSelect(cat)
+                                    } else {
+                                        // No action for unknown keys
                                     }
+                                },
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(categoryColorMap[key] ?: MaterialTheme.colorScheme.primary))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                                 }
-                            },
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(categoryColorMap[key] ?: MaterialTheme.colorScheme.primary))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                                Text("$count", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                                Text(StorageStats.formatSize(sizeBytes), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurface)
                             }
-                            Text("$count", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                            Text(StorageStats.formatSize(sizeBytes), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
             }
 
-            // Premium CTA: Create a reminder Note (prominent button placed below the cards)
-            Spacer(modifier = Modifier.height(12.dp))
-
-            ElevatedButton(
-                onClick = {
-                    nav.value = nav.value.copy(
-                        showVault = true,
-                        showVaultNotes = true,
-                        showVaultNotesCreation = true
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(56.dp),
-                colors = ButtonDefaults.elevatedButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 8.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.StickyNote2, contentDescription = null)
-                Spacer(Modifier.width(10.dp))
-                Text("Create a reminder Note", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Default.Star, contentDescription = "Premium", tint = Color(0xFFFFD700))
+            // Show server started dialog outside scaffold content so it overlays correctly
+            if (showDialog.value) {
+                val port = if (protocol.value == "FTP") 2121 else 8080
+                AlertDialog(
+                    onDismissRequest = { showDialog.value = false },
+                    title = { Text("Server Started ✅") },
+                    text = {
+                        Text(
+                            "Protocol: ${protocol.value}\n" +
+                                    "IP Address: ${ipAddress.value}\n" +
+                                    "Port: $port\n\n" +
+                                    "No username/password needed.\n" +
+                                    "If using FTP, use a client like FileZilla.\n\n" +
+                                    "For HTTP, open ${ipAddress.value}:$port in your browser."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showDialog.value = false }) { Text("OK") }
+                    }
+                )
             }
         }
-    }
-
-    // Show server started dialog outside scaffold content so it overlays correctly
-    if (showDialog.value) {
-        val port = if (protocol.value == "FTP") 2121 else 8080
-        AlertDialog(
-            onDismissRequest = { showDialog.value = false },
-            title = { Text("Server Started ✅") },
-            text = {
-                Text(
-                    "Protocol: ${protocol.value}\n" +
-                            "IP Address: ${ipAddress.value}\n" +
-                            "Port: $port\n\n" +
-                            "No username/password needed.\n" +
-                            "If using FTP, use a client like FileZilla.\n\n" +
-                            "For HTTP, open ${ipAddress.value}:$port in your browser."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showDialog.value = false }) { Text("OK") }
-            }
-        )
     }
 }

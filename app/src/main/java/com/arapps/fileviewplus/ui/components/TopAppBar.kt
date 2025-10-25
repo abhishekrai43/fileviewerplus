@@ -24,11 +24,15 @@ fun FileViewTopAppBar(
     isScanning: Boolean = false,
     onRefresh: () -> Unit = {}
 ) {
-    // Modern premium gradient header with rounded bottom
+    // read status bar inset once
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    // Modern premium gradient header with rounded bottom - REDUCED HEIGHT
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(92.dp)
+            // REDUCED from 92.dp to 64.dp for compact layout
+            .height(64.dp)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
@@ -42,8 +46,10 @@ fun FileViewTopAppBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
+                .padding(horizontal = 16.dp)
+                // push content down by statusBarTop so it sits below the status bar
+                .padding(top = statusBarTop)
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -51,11 +57,11 @@ fun FileViewTopAppBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { onGoHome() }
             ) {
-                // simple circular logo pill
+                // simple circular logo pill - REDUCED SIZE
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.onPrimary)
                 ) {
                     // small emoji/letter centered
@@ -63,60 +69,52 @@ fun FileViewTopAppBar(
                         text = "FF",
                         modifier = Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column {
                     Text(
                         text = "FileFlow Plus",
-                        fontSize = 20.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimary
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    // Short explanatory subtitle so users know what the refresh pill does
+                    // Compact subtitle
                     Text(
                         text = if (isScanning) "Refreshing..." else "Tap Refresh to rescan storage",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                     )
                 }
-
-                // Add extra spacing so the theme switch isn't visually cramped against the title
-                Spacer(modifier = Modifier.width(16.dp))
             }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Theme toggle (label removed — switch only)
+                // Theme toggle - SMALLER SIZE
                 Switch(
                     checked = isDarkMode,
                     onCheckedChange = onToggleTheme,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.secondary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.surface
-                    )
+                    modifier = Modifier.height(24.dp)
                 )
 
-                // Compact vertical refresh control: icon (or spinner) and caption below
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 8.dp)) {
-                    if (isScanning) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSecondary)
-                    } else {
-                        IconButton(onClick = onRefresh) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh files")
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = if (isScanning) "Refreshing..." else "Refresh files",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.95f)
+                // Refresh button - SMALLER
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !isScanning,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

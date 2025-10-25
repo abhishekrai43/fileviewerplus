@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,6 +49,12 @@ import android.content.ContentUris
 import androidx.core.content.FileProvider
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
+import com.arapps.fileviewplus.utils.getStoredPin
+import com.arapps.fileviewplus.utils.copyFileToVault
+import com.arapps.fileviewplus.utils.NotificationUtils
+import com.arapps.fileviewplus.MainActivity
+import com.arapps.fileviewplus.core.AppGlobals
+
 private const val EXTRA_PATH = "extra_path"
 
 
@@ -341,6 +348,14 @@ fun PdfViewerHost(
 
     var pfd by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
     var renderer by remember { mutableStateOf<PdfRenderer?>(null) }
+    var showDeleteAfterMove by remember { mutableStateOf(false) }
+    // Folder chooser state
+    var showMoveToVaultFolderDialog by remember { mutableStateOf(false) }
+    var vaultFolders by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedVaultFolder by remember { mutableStateOf("") }
+
+    // Coroutine scope remembered at composable scope (used by click handlers)
+    val scope = rememberCoroutineScope()
 
     val configuration = LocalConfiguration.current
     val screenWidthPx = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx().toInt() }
@@ -396,6 +411,30 @@ fun PdfViewerHost(
         bitmap = bmp
     }
 
+    // Resume pending Move-to-Vault after PIN setup
+    LaunchedEffect(Unit) {
+        AppGlobals.vaultReady.collect {
+            val pending = AppGlobals.pendingMoveToVaultPath
+            if (!pending.isNullOrEmpty()) {
+                val ctx = context
+                scope.launch(Dispatchers.IO) {
+                    val dest = File(ctx.filesDir, ".vault").apply { mkdirs() }
+                    val copied = try { copyFileToVault(pending, dest) } catch (_: Exception) { null }
+                    withContext(Dispatchers.Main) {
+                        if (copied != null) {
+                            Toast.makeText(ctx, "Moved to Vault", Toast.LENGTH_SHORT).show()
+                            try { NotificationUtils.showVaultMovedNotification(ctx, copied.name) } catch (_: Exception) {}
+                            if (!isExternalOpen && pending == (path ?: uri?.path)) showDeleteAfterMove = true
+                        } else {
+                            Toast.makeText(ctx, "Move failed", Toast.LENGTH_LONG).show()
+                        }
+                        AppGlobals.pendingMoveToVaultPath = null
+                    }
+                }
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             try { renderer?.close() } catch (_: Exception) {}
@@ -404,105 +443,156 @@ fun PdfViewerHost(
         }
     }
 
-    // local state for delete confirmation dialog
-    var showDeleteDialog by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = uri?.lastPathSegment ?: "PDF") },
+                title = { Text(text = File(path ?: uri?.path ?: "").name) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    // Share
-                    IconButton(onClick = {
-                        val p = path ?: uri?.path ?: return@IconButton
-                        onShare(p)
-                    }) {
+                    IconButton(onClick = { onShare(path ?: uri?.path ?: return@IconButton) }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
                     }
-
-                    // Zip & Share
-                    IconButton(onClick = {
-                        val p = path ?: uri?.path ?: return@IconButton
-                        onZipAndShare(p)
-                    }) {
+                    IconButton(onClick = { onZipAndShare(path ?: uri?.path ?: return@IconButton) }) {
                         Icon(Icons.Default.Archive, contentDescription = "Zip & Share")
                     }
-
-                    // Delete (disabled when opened from external Uri)
+                    // Move to Vault
                     IconButton(onClick = {
-                        if (isExternalOpen) {
-                            Toast.makeText(context, "Cannot delete external file. Please delete it from the source.", Toast.LENGTH_LONG).show()
+                        val filePath = path ?: uri?.path
+                        if (filePath == null) return@IconButton
+                        val pin = try { getStoredPin(context) } catch (_: Exception) { null }
+                        if (pin.isNullOrEmpty()) {
+                            Toast.makeText(context, "Set up a Vault PIN first", Toast.LENGTH_LONG).show()
+                            val i = Intent(context, MainActivity::class.java).apply {
+                                putExtra("navigate_to", "vault")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                            // remember pending
+                            AppGlobals.pendingMoveToVaultPath = filePath
+                            context.startActivity(i)
                             return@IconButton
                         }
-                        // show confirmation dialog
-                        showDeleteDialog = true
+                        // Show vault folder picker
+                        val root = File(context.filesDir, ".vault").apply { mkdirs() }
+                        vaultFolders = root.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
+                        selectedVaultFolder = vaultFolders.firstOrNull() ?: ""
+                        showMoveToVaultFolderDialog = true
+                    }) { Icon(Icons.Default.Lock, contentDescription = "Move to Vault") }
+
+                    IconButton(onClick = {
+                        val filePath = path ?: uri?.path ?: return@IconButton
+                        onDeleteRequested(filePath)
                     }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete")
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                }
             )
         }
     ) { padding ->
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(padding), contentAlignment = Alignment.Center) {
-            if (bitmap != null) {
-                Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize())
-            } else {
-                Text(text = "Unable to load PDF", modifier = Modifier.align(Alignment.Center))
-            }
+        Column(modifier = Modifier.padding(padding)) {
+            // Existing PDF page rendering UI follows (unchanged)
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .padding(padding), contentAlignment = Alignment.Center) {
+                if (bitmap != null) {
+                    Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize())
+                } else {
+                    Text(text = "Unable to load PDF", modifier = Modifier.align(Alignment.Center))
+                }
 
-            // Pager controls
-            if (pageCount > 1) {
-                Column(modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(12.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { if (currentPage > 0) currentPage-- }) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Prev")
+                // Pager controls
+                if (pageCount > 1) {
+                    Column(modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(12.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if (currentPage > 0) currentPage-- }) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = "Prev")
+                            }
+                            Text("${currentPage + 1} / $pageCount", modifier = Modifier.padding(horizontal = 12.dp))
+                            IconButton(onClick = { if (currentPage < pageCount - 1) currentPage++ }) {
+                                Icon(Icons.Default.ChevronRight, contentDescription = "Next")
+                            }
                         }
-                        Text("${currentPage + 1} / $pageCount", modifier = Modifier.padding(horizontal = 12.dp))
-                        IconButton(onClick = { if (currentPage < pageCount - 1) currentPage++ }) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next")
-                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Slider(
+                            value = currentPage.toFloat(),
+                            onValueChange = { currentPage = it.toInt() },
+                            valueRange = 0f..((pageCount - 1).coerceAtLeast(0)).toFloat(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Slider(
-                        value = currentPage.toFloat(),
-                        onValueChange = { currentPage = it.toInt() },
-                        valueRange = 0f..((pageCount - 1).coerceAtLeast(0)).toFloat(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         }
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteAfterMove) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete file") },
-            text = { Text("Are you sure you want to permanently delete this file? This action cannot be undone.") },
+            onDismissRequest = { showDeleteAfterMove = false },
+            title = { Text("Delete original file?") },
+            text = { Text("The file was copied to the Vault. Do you also want to delete the original?") },
             confirmButton = {
                 TextButton(onClick = {
-                    showDeleteDialog = false
-                    val p = path ?: uri?.path ?: return@TextButton
-                    onDeleteRequested(p)
+                    showDeleteAfterMove = false
+                    val filePath = path ?: uri?.path
+                    if (filePath != null) onDeleteRequested(filePath)
                 }) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteAfterMove = false }) { Text("Keep") } }
+        )
+    }
+
+    // Vault folder picker dialog
+    if (showMoveToVaultFolderDialog) {
+        val root = File(context.filesDir, ".vault").apply { mkdirs() }
+        AlertDialog(
+            onDismissRequest = { showMoveToVaultFolderDialog = false },
+            title = { Text("Move to Vault") },
+            text = {
+                Column {
+                    if (vaultFolders.isEmpty()) {
+                        Text("No folders in vault. The file will be placed in the vault root. You can create folders in the Vault screen.")
+                    } else {
+                        Text("Choose a destination folder:")
+                        Spacer(Modifier.height(8.dp))
+                        vaultFolders.forEach { name ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+                                androidx.compose.material3.RadioButton(
+                                    selected = selectedVaultFolder == name,
+                                    onClick = { selectedVaultFolder = name }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(name)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMoveToVaultFolderDialog = false
+                    val filePath = path ?: uri?.path ?: return@TextButton
+                    val dest = if (selectedVaultFolder.isBlank()) root else File(root, selectedVaultFolder)
+                    scope.launch(Dispatchers.IO) {
+                        try { if (!dest.exists()) dest.mkdirs() } catch (_: Exception) {}
+                        val copied = copyFileToVault(filePath, dest)
+                        withContext(Dispatchers.Main) {
+                            if (copied != null) {
+                                Toast.makeText(context, "Moved to Vault", Toast.LENGTH_SHORT).show()
+                                try { NotificationUtils.showVaultMovedNotification(context, copied.name) } catch (_: Exception) {}
+                                if (!isExternalOpen) showDeleteAfterMove = true
+                            } else {
+                                Toast.makeText(context, "Move failed", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }) { Text("Move") }
+            },
+            dismissButton = { TextButton(onClick = { showMoveToVaultFolderDialog = false }) { Text("Cancel") } }
         )
     }
 }

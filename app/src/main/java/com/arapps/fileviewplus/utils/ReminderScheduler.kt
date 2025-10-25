@@ -5,8 +5,10 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.work.*
+import com.arapps.fileviewplus.MainActivity
 import com.arapps.fileviewplus.receiver.NoteReminderReceiver
 import com.arapps.fileviewplus.worker.NoteReminderWorker
 import java.util.concurrent.TimeUnit
@@ -27,6 +29,7 @@ object ReminderScheduler {
         val delay = triggerAtMillis - now
 
         Log.d(TAG, "Scheduling: noteId=$noteId at=$triggerAtMillis (delay=$delay ms), repeat=$repeat")
+        Log.d(TAG, "Current time: $now, Target time: $triggerAtMillis")
 
         if (delay <= 0) {
             Log.w(TAG, "Reminder time already passed for noteId=$noteId. Skipping.")
@@ -52,51 +55,27 @@ object ReminderScheduler {
                 flags
             )
 
-            Log.d(TAG, "Created PendingIntent for noteId=$noteId requestCode=$requestCode pendingIntent=$pendingIntent")
+            Log.d(TAG, "Created PendingIntent for noteId=$noteId requestCode=$requestCode")
 
-            try {
-                // Try the exact API first
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-                Log.d(TAG, "Scheduled exact AlarmManager alarm for noteId=$noteId at $triggerAtMillis via setExactAndAllowWhileIdle")
-                return
-            } catch (se: SecurityException) {
-                Log.w(TAG, "setExactAndAllowWhileIdle SecurityException for noteId=$noteId; trying setAndAllowWhileIdle (inexact)", se)
-                try {
-                    // Try a less-restricted inexact alarm API as a best-effort fallback
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-                    Log.d(TAG, "Scheduled inexact AlarmManager alarm for noteId=$noteId at $triggerAtMillis via setAndAllowWhileIdle (fallback)")
-                    return
-                } catch (e: Exception) {
-                    Log.w(TAG, "setAndAllowWhileIdle failed for noteId=$noteId; will fall back to WorkManager", e)
+            // Use the most precise alarm method available
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Check if we can schedule exact alarms
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    Log.d(TAG, "Scheduled setExact() alarm for noteId=$noteId at $triggerAtMillis")
+                } else {
+                    Log.e(TAG, "Cannot schedule exact alarms - permission not granted!")
+                    throw SecurityException("Exact alarm permission not granted")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "AlarmManager.setExactAndAllowWhileIdle failed for noteId=$noteId; will fall back to WorkManager", e)
+            } else {
+                // Pre-Android S: exact alarms allowed by default
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                Log.d(TAG, "Scheduled setExact() alarm (pre-S) for noteId=$noteId at $triggerAtMillis")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "AlarmManager scheduling failed for noteId=$noteId, falling back to WorkManager", e)
+            Log.e(TAG, "Failed to schedule exact alarm for noteId=$noteId", e)
+            throw e
         }
-
-        // Fallback: schedule with WorkManager (less exact, may be deferred by OS)
-        Log.d(TAG, "Scheduling WorkManager fallback for noteId=$noteId in $delay ms")
-        val data = Data.Builder()
-            .putString("note_id", noteId)
-            .putString("note_content", noteContent)
-            .putString("repeat", repeat.name)
-            .build()
-
-        val workRequest = OneTimeWorkRequestBuilder<NoteReminderWorker>()
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .setInputData(data)
-            .addTag("note_reminder_$noteId")
-            .build()
-
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            "note_reminder_$noteId",
-            ExistingWorkPolicy.REPLACE,
-            workRequest
-        )
-
-        Log.d(TAG, "Scheduled WorkManager task for noteId=$noteId after $delay ms (fallback)")
     }
 
     fun cancelReminder(context: Context, noteId: String) {

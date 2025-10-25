@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun BottomBarActions(
@@ -32,36 +33,34 @@ fun BottomBarActions(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(bottom = 0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Use FTP", style = MaterialTheme.typography.labelSmall)
+            Text("Use FTP", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp)
             serverTypeToggle()
         }
 
         NavigationBar(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
-                .background(Color.Red)
+                .height(56.dp),
+            tonalElevation = 3.dp
         ) {
             NavigationBarItem(
-                icon = { Icon(Icons.Default.Lock, contentDescription = "Vault") },
-                label = { Text("Vault") },
+                icon = { Icon(Icons.Default.Lock, contentDescription = "Vault", modifier = Modifier.size(20.dp)) },
+                label = { Text("Vault", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
                 onClick = onVaultClick
             )
 
             NavigationBarItem(
-                icon = { Icon(Icons.Filled.StarRate, contentDescription = "Rate") },
-                label = { Text("Rate") },
+                icon = { Icon(Icons.Filled.StarRate, contentDescription = "Rate", modifier = Modifier.size(20.dp)) },
+                label = { Text("Rate", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
                 onClick = {
                     try {
@@ -82,29 +81,29 @@ fun BottomBarActions(
             )
 
             NavigationBarItem(
-                icon = { Icon(Icons.Filled.Cloud, contentDescription = "Server") },
-                label = { Text(if (isServerRunning) "Stop" else "Serve") },
+                icon = { Icon(Icons.Filled.Cloud, contentDescription = "Server", modifier = Modifier.size(20.dp)) },
+                label = { Text(if (isServerRunning) "Stop" else "Serve", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
                 onClick = onToggleServer
             )
 
             NavigationBarItem(
-                icon = { Icon(Icons.Filled.Search, contentDescription = "Browse") },
-                label = { Text("Browse") },
+                icon = { Icon(Icons.Filled.Search, contentDescription = "Browse", modifier = Modifier.size(20.dp)) },
+                label = { Text("Browse", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
                 onClick = onSearch
             )
 
             NavigationBarItem(
-                icon = { Icon(Icons.Default.SystemUpdate, contentDescription = "Update App") },
-                label = { Text("Update") },
+                icon = { Icon(Icons.Default.SystemUpdate, contentDescription = "Update App", modifier = Modifier.size(20.dp)) },
+                label = { Text("Update", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
-                onClick = { onUpdateApp(context) } // ✅ Pass context here
+                onClick = { onUpdateApp(context) }
             )
 
             NavigationBarItem(
-                icon = { Icon(Icons.Filled.Share, contentDescription = "Share") },
-                label = { Text("Share") },
+                icon = { Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(20.dp)) },
+                label = { Text("Share", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp) },
                 selected = false,
                 onClick = onShareApp
             )

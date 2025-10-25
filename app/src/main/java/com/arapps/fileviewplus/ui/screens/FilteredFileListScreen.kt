@@ -321,7 +321,133 @@ fun FilteredFileListScreen(
                 return@Column
             }
 
-            if (selectedGroup == null) {
+            if (filterMode == FilterMode.OTHERS) {
+                // Always show a flat list for 'Others'
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(1),
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(fileNodes, key = { it.path }) { fn ->
+                        val isSelected = selected.contains(fn.path)
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Box(modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(onClick = {
+                                    if (selected.isNotEmpty()) {
+                                        if (isSelected) selected.remove(fn.path) else selected.add(fn.path)
+                                        showSelectionToolbar = selected.isNotEmpty()
+                                    } else {
+                                        if (!existsAtPath(context, fn.path)) {
+                                            fileNodes.removeAll { it.path == fn.path }
+                                            broadcastFileDeleted(context, fn.path)
+                                            Toast.makeText(context, "${fn.name} not available. Removed from list.", Toast.LENGTH_SHORT).show()
+                                            return@combinedClickable
+                                        }
+                                        onOpenViewer(File(fn.path))
+                                    }
+                                }, onLongClick = {
+                                    if (!isSelected) selected.add(fn.path)
+                                    showSelectionToolbar = true
+                                }) ) {
+
+                                Column(modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        FilePreviewThumbnail(file = File(fn.path))
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                fn.name,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(StorageStats.formatSize(fn.size), style = MaterialTheme.typography.labelMedium)
+                                        }
+
+                                        var menuExpanded by remember { mutableStateOf(false) }
+                                        Box {
+                                            IconButton(onClick = { menuExpanded = true }) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = "Actions")
+                                            }
+                                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Open") },
+                                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                                                    onClick = {
+                                                        menuExpanded = false
+                                                        if (!existsAtPath(context, fn.path)) {
+                                                            fileNodes.removeAll { it.path == fn.path }
+                                                            broadcastFileDeleted(context, fn.path)
+                                                            Toast.makeText(context, "${fn.name} not available. Removed from list.", Toast.LENGTH_SHORT).show()
+                                                            return@DropdownMenuItem
+                                                        }
+                                                        onOpenViewer(File(fn.path))
+                                                    }
+                                                )
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete") },
+                                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                                    onClick = {
+                                                        menuExpanded = false
+                                                        val pathToDelete = fn.path
+                                                        val nameToShow = fn.name
+
+                                                        coroutineScope.launch {
+                                                            val node = try { FileNode.fromFile(File(pathToDelete)) } catch (_: Throwable) { null }
+                                                            if (node == null) {
+                                                                Toast.makeText(context, "Unable to delete: internal error", Toast.LENGTH_LONG).show()
+                                                                return@launch
+                                                            }
+
+                                                            when (val res = DeletionManager.deleteFile(context, node)) {
+                                                                is DeletionManager.DeleteResult.Deleted -> {
+                                                                    fileNodes.removeAll { it.path == pathToDelete }
+                                                                    broadcastFileDeleted(context, pathToDelete)
+                                                                    tryRefreshMediaStore(context, pathToDelete)
+                                                                    Toast.makeText(context, "Deleted $nameToShow", Toast.LENGTH_SHORT).show()
+                                                                }
+
+                                                                is DeletionManager.DeleteResult.NeedUserGrant -> {
+                                                                    // Save pending path and open SAF picker using helper that references the launcher
+                                                                    pendingSafGrantForPath = pathToDelete
+                                                                    val suggested = res.suggestedUriToOpen
+                                                                    // IMPORTANT: use helper reference so launcher is invoked from proper scope
+                                                                    launchSafPicker?.invoke(suggested)
+                                                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                                                }
+
+                                                                is DeletionManager.DeleteResult.Failed -> {
+                                                                    Toast.makeText(context, "Unable to delete: ${res.reason}", Toast.LENGTH_LONG).show()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // selection overlay: stronger, theme-aware color for better visibility on light theme
+                                    if (isSelected) {
+                                        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (selectedGroup == null) {
                 // Show grouped tile view: IMG, VID, AUDIO, DOC
                 val groups = listOf(
                     Triple("IMG", ::isImageFile, "Images"),

@@ -3,7 +3,7 @@ package com.arapps.fileviewplus.model
 import java.io.File
 
 enum class FilterMode {
-    NONE, OLD, LARGE, DUPLICATE
+    NONE, OLD, LARGE, DUPLICATE, OTHERS
 }
 
 data class NavigationState(

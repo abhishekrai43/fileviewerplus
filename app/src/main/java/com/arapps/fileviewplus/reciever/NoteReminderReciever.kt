@@ -25,7 +25,7 @@ class NoteReminderReceiver : BroadcastReceiver() {
         Log.d("NoteReminderReceiver", "Received alarm for noteId=$noteId content=$noteContent repeat=$repeatStr")
 
         // Post notification directly from the BroadcastReceiver (avoids starting a foreground service)
-        val channelId = "note_reminder_channel"
+        val channelId = "note_reminder_v2"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Note Reminders", NotificationManager.IMPORTANCE_HIGH)
             val mgr = context.getSystemService(NotificationManager::class.java)
@@ -34,7 +34,7 @@ class NoteReminderReceiver : BroadcastReceiver() {
 
         val notificationIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("navigate_to", "vault")
+            putExtra("navigate_to", "vault_note:$noteId")
         }
 
         val requestCode = abs(noteId.hashCode())

@@ -34,6 +34,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.util.Log
 import androidx.work.WorkManager
+import com.arapps.fileviewplus.core.AppGlobals
 import com.arapps.fileviewplus.data.NoteStore
 
 private const val UPDATE_REQUEST_CODE = 1001
@@ -59,6 +60,9 @@ class MainActivity : ComponentActivity() {
 
         // edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // If an external intent asked to navigate somewhere, forward it to the composable via AppGlobals
+        handleNavigateExtra(intent)
 
         setContent {
             val themeFlow = ThemeSettings.getThemeFlow(applicationContext)
@@ -107,6 +111,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleNavigateExtra(intent)
+    }
+
+    private fun handleNavigateExtra(intent: Intent?) {
+        val dest = intent?.getStringExtra("navigate_to") ?: return
+        lifecycleScope.launch {
+            try {
+                if (dest.startsWith("vault_note:")) {
+                    // Navigate to vault notes and signal which note to focus
+                    val noteId = dest.removePrefix("vault_note:")
+                    AppGlobals.navigateTo.emit("vault_notes")
+                    AppGlobals.openNote.emit(noteId)
+                } else {
+                    AppGlobals.navigateTo.emit(dest)
+                }
+            } catch (_: Exception) {}
         }
     }
 

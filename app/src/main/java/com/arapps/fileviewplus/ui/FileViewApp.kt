@@ -20,6 +20,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.arapps.fileviewplus.core.AppGlobals
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETE_MANUAL_REMIND
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
@@ -62,6 +64,22 @@ fun FileViewApp(
     var fileStructure by remember { mutableStateOf<List<FileNode.Category>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     val nav = remember { mutableStateOf(NavigationState()) }
+
+    // Listen for navigation requests emitted by MainActivity (e.g., from notifications)
+    LaunchedEffect(Unit) {
+        AppGlobals.navigateTo.collect { dest ->
+            when {
+                dest == "vault" -> nav.value = NavigationState(showVault = true)
+                dest == "vault_notes" -> nav.value = NavigationState(showVault = true, showVaultNotes = true)
+                dest == "vault_new_note" -> nav.value = NavigationState(showVault = true, showVaultNotes = true, showVaultNotesCreation = true)
+                dest.startsWith("vault_note:") -> {
+                    val id = dest.removePrefix("vault_note:")
+                    nav.value = NavigationState(showVault = true, showVaultNotes = true)
+                    try { AppGlobals.openNote.emit(id) } catch (_: Exception) {}
+                }
+            }
+        }
+    }
 
     fun removeFileFromStructure(path: String, structure: List<FileNode.Category>): List<FileNode.Category> {
         if (structure.isEmpty()) return structure
@@ -213,49 +231,58 @@ fun FileViewApp(
         }
     }
 
-    when {
-        nav.value.day != null -> FileListScreen(nav.value.day!!) {
-            nav.value = nav.value.goBack()
+    // Wrap navigation content in a Surface that fills the window and respects system insets.
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        when {
+            nav.value.day != null -> FileListScreen(nav.value.day!!) {
+                nav.value = nav.value.goBack()
+            }
+            nav.value.month != null -> DayListScreen(
+                nav.value.month!!,
+                onSelect = { nav.value = nav.value.copy(day = it) },
+                onBack = { nav.value = nav.value.copy(month = null) }
+            )
+            nav.value.year != null -> MonthListScreen(
+                nav.value.year!!,
+                onSelect = { nav.value = nav.value.copy(month = it) },
+                onBack = { nav.value = nav.value.copy(year = null) }
+            )
+            nav.value.category != null -> YearListScreen(
+                nav.value.category!!,
+                onYearSelected = { nav.value = nav.value.copy(year = it) }
+            )
+            nav.value.showFileTypeExplorer -> FileTypeExplorerScreen(categories = fileStructure)
+            nav.value.vaultFolder != null -> VaultFolderScreen(
+                folder = nav.value.vaultFolder!!,
+                onBack = { nav.value = nav.value.copy(vaultFolder = null) }
+            )
+            nav.value.showVault -> VaultScreen(
+                onBack = { nav.value = NavigationState() },
+                onOpenFolder = { nav.value = nav.value.copy(vaultFolder = it) },
+                initialShowNotes = nav.value.showVaultNotes,
+                initialShowCreateNote = nav.value.showVaultNotesCreation
+            )
+            else -> CategoryListScreen(
+                fileStructure,
+                { nav.value = nav.value.copy(category = it) },
+                { nav.value = nav.value.copy(showFileTypeExplorer = true) },
+                {
+                    Toast.makeText(context, "Toggle view not implemented", Toast.LENGTH_SHORT).show()
+                },
+                { nav.value = NavigationState() },
+                isDarkMode,
+                onToggleTheme,
+                { nav.value = nav.value.copy(showVault = true) },
+                nav,
+                { refreshFiles(force = true) },
+                isLoading
+            )
         }
-        nav.value.month != null -> DayListScreen(
-            nav.value.month!!,
-            onSelect = { nav.value = nav.value.copy(day = it) },
-            onBack = { nav.value = nav.value.copy(month = null) }
-        )
-        nav.value.year != null -> MonthListScreen(
-            nav.value.year!!,
-            onSelect = { nav.value = nav.value.copy(month = it) },
-            onBack = { nav.value = nav.value.copy(year = null) }
-        )
-        nav.value.category != null -> YearListScreen(
-            nav.value.category!!,
-            onYearSelected = { nav.value = nav.value.copy(year = it) }
-        )
-        nav.value.showFileTypeExplorer -> FileTypeExplorerScreen(categories = fileStructure)
-        nav.value.vaultFolder != null -> VaultFolderScreen(
-            folder = nav.value.vaultFolder!!,
-            onBack = { nav.value = nav.value.copy(vaultFolder = null) }
-        )
-        nav.value.showVault -> VaultScreen(
-            onBack = { nav.value = NavigationState() },
-            onOpenFolder = { nav.value = nav.value.copy(vaultFolder = it) },
-            initialShowNotes = nav.value.showVaultNotes
-        )
-        else -> CategoryListScreen(
-            fileStructure,
-            { nav.value = nav.value.copy(category = it) },
-            { nav.value = nav.value.copy(showFileTypeExplorer = true) },
-            {
-                Toast.makeText(context, "Toggle view not implemented", Toast.LENGTH_SHORT).show()
-            },
-            { nav.value = NavigationState() },
-            isDarkMode,
-            onToggleTheme,
-            { nav.value = nav.value.copy(showVault = true) },
-            nav,
-            { refreshFiles(force = true) },
-            isLoading
-        )
     }
 
     // Global inline audio mini-player (plays whenever PlaybackController.active is set)

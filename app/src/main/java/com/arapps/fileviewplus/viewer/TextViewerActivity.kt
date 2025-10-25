@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +29,10 @@ import androidx.compose.ui.unit.dp
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
 import com.arapps.fileviewplus.utils.ZipUtils
+import com.arapps.fileviewplus.utils.copyFileToVault
+import com.arapps.fileviewplus.utils.getStoredPin
+import com.arapps.fileviewplus.utils.NotificationUtils
+import com.arapps.fileviewplus.MainActivity
 import com.arapps.fileviewplus.viewer.ImageViewerActivity.Companion.ACTION_FILE_DELETED
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -91,6 +96,8 @@ fun TextViewerHost(file: File, onClose: () -> Unit) {
 
     // Dialog state for delete confirmation
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    // After moving to vault, confirm deleting original
+    var showDeleteAfterMove by rememberSaveable { mutableStateOf(false) }
 
     // Launcher for ACTION_OPEN_DOCUMENT_TREE if SAF permission is needed
     val pickTreeLauncher = rememberLauncherForActivityResult(
@@ -187,6 +194,35 @@ fun TextViewerHost(file: File, onClose: () -> Unit) {
                         Icon(Icons.Default.Archive, contentDescription = "Zip & Share")
                     }
 
+                    // Move to Vault
+                    IconButton(onClick = {
+                        val pin = try { getStoredPin(context) } catch (_: Exception) { null }
+                        if (pin.isNullOrEmpty()) {
+                            Toast.makeText(context, "Set up a Vault PIN first", Toast.LENGTH_LONG).show()
+                            val i = Intent(context, MainActivity::class.java).apply {
+                                putExtra("navigate_to", "vault")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                            context.startActivity(i)
+                            return@IconButton
+                        }
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val dest = File(context.filesDir, ".vault").apply { mkdirs() }
+                            val copied = copyFileToVault(file.absolutePath, dest)
+                            withContext(Dispatchers.Main) {
+                                if (copied != null) {
+                                    Toast.makeText(context, "Moved to Vault", Toast.LENGTH_SHORT).show()
+                                    try { NotificationUtils.showVaultMovedNotification(context, copied.name) } catch (_: Exception) {}
+                                    showDeleteAfterMove = true
+                                } else {
+                                    Toast.makeText(context, "Move failed", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Default.Lock, contentDescription = "Move to Vault")
+                    }
+
                     // Delete
                     IconButton(onClick = {
                         showDeleteDialog = true
@@ -255,6 +291,27 @@ fun TextViewerHost(file: File, onClose: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
             }
+        )
+    }
+
+    // Confirm delete after move-to-vault
+    if (showDeleteAfterMove) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAfterMove = false },
+            title = { Text("Delete original file?") },
+            text = { Text("The file was copied to the Vault. Do you also want to delete the original?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteAfterMove = false
+                    coroutineScope.launch {
+                        val res = attemptDeleteFlow(context, file)
+                        if (res is DeleteResult.Deleted) {
+                            (context as? Activity)?.finish()
+                        }
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteAfterMove = false }) { Text("Keep") } }
         )
     }
 }

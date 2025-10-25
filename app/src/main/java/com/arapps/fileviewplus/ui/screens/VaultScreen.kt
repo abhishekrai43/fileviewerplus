@@ -188,6 +188,8 @@ fun VaultScreen(
                                 storePin(context, pin)
                                 hasPin = true
                                 unlocked = true
+                                // Notify others waiting to resume Move-to-Vault
+                                try { com.arapps.fileviewplus.core.AppGlobals.vaultReady.tryEmit(Unit) } catch (_: Exception) {}
                             },
                             onCancel = onBack
                         )
@@ -371,6 +373,7 @@ fun VaultScreen(
                             if (it == getStoredPin(context)) {
                                 unlocked = true
                                 showEnterPin = false
+                                try { com.arapps.fileviewplus.core.AppGlobals.vaultReady.tryEmit(Unit) } catch (_: Exception) {}
                             } else {
                                 Toast.makeText(context, "Incorrect PIN", Toast.LENGTH_SHORT).show()
                             }
@@ -442,6 +445,7 @@ fun VaultScreen(
                         if (input == getStoredPin(context)) {
                             unlocked = true
                             showEnterPin = false
+                            try { com.arapps.fileviewplus.core.AppGlobals.vaultReady.tryEmit(Unit) } catch (_: Exception) {}
                         } else {
                             Toast.makeText(context, "Incorrect PIN", Toast.LENGTH_SHORT).show()
                         }

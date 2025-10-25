@@ -24,7 +24,7 @@ class NoteReminderWorker(
 
         Log.d("NoteReminderWorker", "doWork invoked for noteId=$noteId content=$noteContent")
 
-        val channelId = "note_reminder_channel"
+        val channelId = "note_reminder_v2"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Note Reminders"
             val channel = NotificationChannel(channelId, name, NotificationManager.IMPORTANCE_HIGH)
@@ -35,7 +35,7 @@ class NoteReminderWorker(
         // ✅ Intent to open MainActivity (or deep link to vault screen if desired)
         val notificationIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("navigate_to", "vault") // optional
+            putExtra("navigate_to", "vault_note:$noteId")
         }
 
         val pendingIntent = PendingIntent.getActivity(

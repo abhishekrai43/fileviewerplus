@@ -31,17 +31,21 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arapps.fileviewplus.core.AppGlobals
 import com.arapps.fileviewplus.intent.IntentActions.ACTION_FILE_DELETED
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETE_MANUAL_REMIND
 import com.arapps.fileviewplus.intent.IntentActions.EXTRA_DELETED_PATH
 import com.arapps.fileviewplus.model.FileNode
 import com.arapps.fileviewplus.utils.DeletionManager
+import com.arapps.fileviewplus.utils.NotificationUtils
 import com.arapps.fileviewplus.utils.copyFileToVault
 import com.arapps.fileviewplus.utils.findActivity
+import com.arapps.fileviewplus.utils.getStoredPin
 import com.arapps.fileviewplus.viewer.ViewerRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -95,6 +99,7 @@ fun FileActionsMenu(
     var lastCopiedFile by remember { mutableStateOf<File?>(null) }
     var vaultFolders by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedVaultFolder by remember { mutableStateOf("") }
+    var showVaultPinRequiredDialog by remember { mutableStateOf(false) }
 
     // small progress UI state
     var showOpProgress by remember { mutableStateOf(false) }
@@ -266,8 +271,14 @@ fun FileActionsMenu(
                 text = { Text("Move to Vault") },
                 onClick = {
                     expanded = false
-                    // Show folder chooser for vault destination instead of directly copying to root
                     val ctx = context
+                    // Require PIN to be set before allowing move-to-vault
+                    val pin = try { getStoredPin(ctx) } catch (_: Exception) { null }
+                    if (pin.isNullOrEmpty()) {
+                        showVaultPinRequiredDialog = true
+                        return@DropdownMenuItem
+                    }
+                    // Show folder chooser for vault destination instead of directly copying to root
                     val vr = File(ctx.filesDir, ".vault").apply { mkdirs() }
                     vaultFolders = vr.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
                     selectedVaultFolder = vaultFolders.firstOrNull() ?: ""
@@ -284,6 +295,25 @@ fun FileActionsMenu(
                 }
             )
         }
+    }
+
+    // Dialog prompting user to set up a PIN before first vault use
+    if (showVaultPinRequiredDialog) {
+        AlertDialog(
+            onDismissRequest = { showVaultPinRequiredDialog = false },
+            title = { Text("Set up Vault PIN") },
+            text = { Text("To protect your files, please set a Vault PIN before moving items to the Vault.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showVaultPinRequiredDialog = false
+                    // Navigate to Vault screen where SetupPinDialog will appear
+                    coroutineScope.launch { AppGlobals.navigateTo.emit("vault") }
+                }) { Text("Open Vault") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVaultPinRequiredDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     // Dialog: choose vault folder to copy into
@@ -321,19 +351,21 @@ fun FileActionsMenu(
                             val copied = copyFileToVault(file.path, dest)
                             withContext(Dispatchers.Main) {
                                 if (copied != null) {
-                                    Toast.makeText(ctx, "Copied to Vault: ${copied.name}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(ctx, "Moved to Vault: ${copied.name}", Toast.LENGTH_SHORT).show()
+                                    // Fire a success notification that opens Vault when tapped
+                                    try { NotificationUtils.showVaultMovedNotification(ctx, copied.name) } catch (_: Exception) {}
                                     lastCopiedFile = copied
                                     // Ask user separately whether to delete the original file
                                     showDeleteOriginalConfirm = true
                                 } else {
-                                    Toast.makeText(ctx, "Failed to copy to Vault", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(ctx, "Failed to move to Vault", Toast.LENGTH_LONG).show()
                                 }
                             }
                         } catch (t: Throwable) {
                             withContext(Dispatchers.Main) { Toast.makeText(ctx, "Error: ${t.localizedMessage}", Toast.LENGTH_LONG).show() }
                         }
                     }
-                }) { Text("Copy") }
+                }) { Text("Move") }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { showMoveToVaultFolderDialog = false }) { Text("Cancel") }

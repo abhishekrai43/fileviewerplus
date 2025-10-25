@@ -162,12 +162,15 @@ fun NoteDialog(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         val alarmManager = context.getSystemService(AlarmManager::class.java)
                         if (!alarmManager.canScheduleExactAlarms()) {
-                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                            Toast.makeText(context, "Please allow exact alarm access.", Toast.LENGTH_LONG).show()
-                            return@OutlinedButton
+                            // Inform the user but do NOT block scheduling; ReminderScheduler uses an AlarmClock fallback
+                            Toast.makeText(context, "Exact alarm access not granted. We'll use a reliable fallback.", Toast.LENGTH_LONG).show()
+                            // Optionally direct user to settings without blocking
+                            try {
+                                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
                         }
                     }
 

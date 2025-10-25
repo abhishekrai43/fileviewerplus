@@ -29,6 +29,8 @@ import com.arapps.fileviewplus.utils.ReminderScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.arapps.fileviewplus.core.AppGlobals
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +42,9 @@ fun VaultNotesScreen(onBack: () -> Unit, initialCreate: Boolean = false) {
     var showDialog by remember { mutableStateOf(initialCreate) }
     var editNote by remember { mutableStateOf<Note?>(null) }
 
+    val listState = rememberLazyListState()
+    var pendingFocusId by remember { mutableStateOf<String?>(null) }
+
     fun loadNotes() {
         scope.launch(Dispatchers.IO) {
             val loaded = NoteManager.loadNotes(context)
@@ -49,6 +54,23 @@ fun VaultNotesScreen(onBack: () -> Unit, initialCreate: Boolean = false) {
 
     LaunchedEffect(Unit) {
         loadNotes()
+    }
+
+    // Collect deep-link events to focus a specific note
+    LaunchedEffect(Unit) {
+        AppGlobals.openNote.collect { id ->
+            pendingFocusId = id
+        }
+    }
+
+    // Scroll when notes are loaded and we have a pending focus id
+    LaunchedEffect(notes, pendingFocusId) {
+        val id = pendingFocusId ?: return@LaunchedEffect
+        val idx = notes.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            try { listState.scrollToItem(idx) } catch (_: Exception) {}
+        }
+        pendingFocusId = null
     }
 
     Scaffold(
@@ -97,7 +119,7 @@ fun VaultNotesScreen(onBack: () -> Unit, initialCreate: Boolean = false) {
                     Text("No notes yet. Tap + to create one.", color = Color.Gray)
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(notes, key = { it.id }) { note ->
                         NoteCard(note = note, onEdit = {
                             editNote = it
