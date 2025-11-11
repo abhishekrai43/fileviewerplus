@@ -24,15 +24,12 @@ fun FileViewTopAppBar(
     isScanning: Boolean = false,
     onRefresh: () -> Unit = {}
 ) {
-    // read status bar inset once
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-
-    // Modern premium gradient header with rounded bottom - REDUCED HEIGHT
+    // Modern premium gradient header with rounded bottom
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // REDUCED from 92.dp to 64.dp for compact layout
-            .height(64.dp)
+            // Increased height to prevent squishing
+            .height(80.dp)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
@@ -46,10 +43,7 @@ fun FileViewTopAppBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                // push content down by statusBarTop so it sits below the status bar
-                .padding(top = statusBarTop)
-                .padding(vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -57,10 +51,10 @@ fun FileViewTopAppBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { onGoHome() }
             ) {
-                // simple circular logo pill - REDUCED SIZE
+                // simple circular logo pill
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.onPrimary)
                 ) {
@@ -70,11 +64,11 @@ fun FileViewTopAppBar(
                         modifier = Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontSize = 16.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
                     Text(
@@ -87,7 +81,7 @@ fun FileViewTopAppBar(
                     Text(
                         text = if (isScanning) "Refreshing..." else "Tap Refresh to rescan storage",
                         style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                     )
                 }
@@ -95,26 +89,26 @@ fun FileViewTopAppBar(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Theme toggle - SMALLER SIZE
+                // Theme toggle
                 Switch(
                     checked = isDarkMode,
                     onCheckedChange = onToggleTheme,
-                    modifier = Modifier.height(24.dp)
+                    modifier = Modifier.height(28.dp)
                 )
 
-                // Refresh button - SMALLER
+                // Refresh button
                 IconButton(
                     onClick = onRefresh,
                     enabled = !isScanning,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         Icons.Default.Refresh,
                         contentDescription = "Refresh",
                         tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }

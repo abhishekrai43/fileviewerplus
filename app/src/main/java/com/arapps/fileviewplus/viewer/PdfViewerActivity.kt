@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -600,10 +601,12 @@ fun PdfViewerHost(
 /**
  * Render a page to a Bitmap scaled to targetWidth (keeps aspect ratio).
  * Runs on Dispatchers.IO when called from a coroutine.
+ * Enhanced error handling to catch native PDF rendering crashes.
  */
 private suspend fun renderPageScaled(renderer: PdfRenderer, pageIndex: Int, targetWidth: Int): Bitmap? {
     return withContext(Dispatchers.IO) {
         var page: PdfRenderer.Page? = null
+        var bitmap: Bitmap? = null
         try {
             page = renderer.openPage(pageIndex)
             val origW = page.width
@@ -612,15 +615,29 @@ private suspend fun renderPageScaled(renderer: PdfRenderer, pageIndex: Int, targ
             val scale = targetW.toFloat() / origW.toFloat()
             val targetH = (origH * scale).toInt().coerceAtLeast(1)
 
-            val bmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-            bmp.eraseColor(android.graphics.Color.WHITE)
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            bmp
-        } catch (e: Exception) {
-            e.printStackTrace()
+            bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(android.graphics.Color.WHITE)
+
+            // Wrap the render call in additional try-catch to handle native crashes
+            try {
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            } catch (renderError: Throwable) {
+                // Native rendering error - log and return null
+                Log.e("PdfViewerActivity", "Native PDF render error for page $pageIndex: ${renderError.message}", renderError)
+                bitmap.recycle()
+                return@withContext null
+            }
+
+            bitmap
+        } catch (e: Throwable) {
+            // Catch all errors including native crashes
+            Log.e("PdfViewerActivity", "Error rendering PDF page $pageIndex: ${e.message}", e)
+            bitmap?.recycle()
             null
         } finally {
-            try { page?.close() } catch (_: Exception) {}
+            try { page?.close() } catch (_: Throwable) {
+                Log.w("PdfViewerActivity", "Error closing PDF page")
+            }
         }
     }
 }

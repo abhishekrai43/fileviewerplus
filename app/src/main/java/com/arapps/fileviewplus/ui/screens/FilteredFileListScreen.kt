@@ -112,7 +112,27 @@ fun FilteredFileListScreen(
     val coroutineScope = rememberCoroutineScope()
 
     // reactive local copy of files as FileNode for richer metadata
-    val fileNodes = remember { mutableStateListOf<FileNode>().apply { addAll(files.mapNotNull { f -> try { FileNode.fromFile(f) } catch (_: Throwable) { null } }) } }
+    // Load asynchronously to avoid blocking main thread with file.length() calls
+    val fileNodes = remember { mutableStateListOf<FileNode>() }
+    var isLoadingNodes by remember { mutableStateOf(true) }
+
+    LaunchedEffect(files) {
+        isLoadingNodes = true
+        withContext(Dispatchers.IO) {
+            val nodes = files.mapNotNull { f ->
+                try {
+                    FileNode.fromFile(f)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            withContext(Dispatchers.Main) {
+                fileNodes.clear()
+                fileNodes.addAll(nodes)
+                isLoadingNodes = false
+            }
+        }
+    }
 
     // UI state: when null show grouped view, otherwise show files for selected group key
     var selectedGroup by remember { mutableStateOf<String?>(null) }

@@ -1,5 +1,3 @@
-import org.gradle.internal.impldep.org.apache.sshd.sftp.common.extensions.VersionsParser
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,8 +14,8 @@ android {
         applicationId = "com.arapps.fileviewplus"
         minSdk = 24
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.5.0"
+        versionCode = 25
+        versionName = "1.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
