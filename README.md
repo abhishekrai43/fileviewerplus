@@ -1,95 +1,97 @@
 https://play.google.com/store/apps/details?id=com.arapps.fileviewplus
 
-🚀 FileFlow Plus
+
+FileFlow Plus
+
 Smart. Secure. Offline. Yours Forever.
 
 No Login. No Ads. No Internet. Ever.
 
-✨ Why FileFlow Plus?
-✅ Zero Cloud. Zero Ads. Zero Nonsense
-✅ 100% Offline – Doesn’t use a single byte of data
-✅ Built for Android – Fully SAF-compliant (Storage Access Framework)
-✅ Your Files Stay Yours – No shady syncs, no background uploads. Ever.
+Why FileFlow Plus
 
-🔥 Core Features
-📂 Smart File Manager
-Organize files the way you think — by Year → Month → Day
+100% Offline: Works entirely without internet or background data usage.
 
-Blazing fast folder structure
+Zero Cloud, Zero Ads: No hidden syncs, trackers, or telemetry.
 
-Elegant, intuitive design
+Privacy-First: Your files remain on your device — always.
 
-Smart previews for PDF, images, video, text, and more
+Built for Android: Fully compliant with Android’s Storage Access Framework (SAF).
 
-🌐 Built-in File Sharing
-No cables. No apps. No limits.
+Core Features
+Smart File Manager
 
-Internal HTTP Server to share files on local Wi-Fi
+Organize files by Year → Month → Day
 
-FTP Mode for full remote control from PC/Mac
+Blazing-fast folder navigation
 
-No internet required. Works fully offline.
+Modern, minimal interface
 
-🧠 Smart Suggestions
-Take back your space with a tap.
+Smart previews for PDFs, images, videos, text, and more
 
-Find large, old, and hidden files
+Local File Sharing
 
-Get intelligent cleanup suggestions — actually useful, not annoying
+Share files instantly over local Wi-Fi — no internet needed
 
-🔐 Secure Vault
-Your private space. Locked. Encrypted. Untouchable.
+Internal HTTP Server and FTP Mode for access from any PC or Mac
 
-Move files into a PIN-protected Vault
+Works fully offline, even between devices
 
-Optional lock screen & recovery hint
+Smart Cleanup
 
-Only you can unlock – zero 3rd-party access
+Detect large, old, or hidden files
 
-📝 Vault Notes
-The Sticky Notes you always wanted — private, powerful.
+Intelligent cleanup suggestions that actually help
 
-Add reminders, passwords, or to-dos
+Secure Vault
 
-Use PIN hints, or make notes invisible for stealth
+PIN-protected encrypted storage
 
-Get notifications at exactly the right time
+Optional lock screen and recovery hint
 
-Beautiful handwritten-style font and sticky-note UI
+Vault-only file types for maximum protection
 
-☁️ Backup & Restore
-Disasters happen. FileFlow’s got your back.
+Vault Notes
 
-🔐 Encrypted 1-Click Vault Backup to Google Drive
+Private notes with optional PIN hints or invisible mode
 
-🔁 Restore from any device — even if your phone is lost or reset
+Ideal for reminders, passwords, and personal info
 
-Choose exactly what to back up – folders, notes, or files
+Clean handwritten-style interface with scheduled notifications
 
-🛡️ Privacy-First Philosophy
-📵 Works completely offline
-🧾 Built with open-source logic for transparency
-🚫 No analytics, no tracking, no hidden syncs
+Backup & Restore
 
-📁 Compatible File Types
-✅ Images (.jpg, .png, .webp...)
+Encrypted one-click Vault backup to Google Drive
 
-✅ Videos (.mp4, .mkv...)
+Restore from any device
 
-✅ Documents (.pdf, .txt, .docx, .xlsx)
+Selective backup of folders, notes, and files
 
-✅ Secure Files (.ffpsecure – only openable inside FileFlow Plus)
+Privacy and Philosophy
 
-✅ Vault-only protected formats
+Works completely offline
 
-👑 Built for People Who Care About:
+Built with transparent, open-source logic
+
+No analytics, tracking, or hidden syncs
+
+Supported File Types
+
+Images: JPG, PNG, WEBP
+
+Videos: MP4, MKV
+
+Documents: PDF, TXT, DOCX, XLSX
+
+Secure Files: .ffpsecure (accessible only within FileFlow Plus)
+
+Vault-only formats for sensitive content
+
+For People Who Value
+
 Digital minimalism
 
 Data ownership
 
-No-nonsense offline workflows
+Secure offline workflows
 
-Being able to find files instantly
-
-🧪 Still Improving
-We're adding even more power — biometric Vault unlock, PDF signing, folder tagging, and more.
+Instant access and clean organizatio
